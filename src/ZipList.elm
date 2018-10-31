@@ -29,17 +29,17 @@ singleton value =
     }
 
 
-toList : ZipList a -> List a
+toList : ZipList value -> List value
 toList zl =
     List.reverse zl.heads ++ [ zl.current ] ++ zl.tails
 
 
-atHead : ZipList a -> Bool
+atHead : ZipList value -> Bool
 atHead zl =
     zl.heads == []
 
 
-atTail : ZipList a -> Bool
+atTail : ZipList value -> Bool
 atTail zl =
     zl.tails == []
 
