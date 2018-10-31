@@ -1,5 +1,7 @@
-module Debugger exposing (todo)
+module Debugger exposing (sandbox)
+
+import Browser
 
 
-todo =
-    Debug.todo
+sandbox _ _ =
+    Browser.sandbox
