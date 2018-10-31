@@ -1,4 +1,4 @@
-module Debugger exposing (Model, Msg, toInit, toUpdate, toView, view)
+module Debugger exposing (Program, toInit, toUpdate, toView, view)
 
 import Browser
 import Html exposing (Html)
@@ -17,6 +17,10 @@ type alias Model appModel appMsg =
 
 type Msg appMsg
     = UpdateApp appMsg
+
+
+type alias Program flags appModel appMsg =
+    Platform.Program flags (Model appModel appMsg) (Msg appMsg)
 
 
 toInit : appModel -> Model appModel appMsg

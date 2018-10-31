@@ -10,7 +10,7 @@ sandbox :
     , update : msg -> model -> model
     , view : model -> Html msg
     }
-    -> Program () (Debugger.Model model msg) (Debugger.Msg msg)
+    -> Debugger.Program () model msg
 sandbox { init, update, view } =
     Browser.sandbox
         { init = Debugger.toInit init
