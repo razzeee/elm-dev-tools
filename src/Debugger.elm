@@ -1,9 +1,8 @@
 module Debugger exposing (Program, toInit, toUpdate, toView, view)
 
 import Browser
+import Element
 import Html exposing (Html)
-import Html.Attributes as Ha
-import Html.Events as He
 import ZipList exposing (ZipList)
 
 
@@ -45,7 +44,9 @@ toUpdate updateApp msg model =
 
 view : Model appModel appMsg -> Html (Msg appMsg)
 view { appModels, appMessages, isAppModelVisible, isAppMessagesVisible } =
-    Html.div [] []
+    Element.layout [] <|
+        Element.column []
+            []
 
 
 toView : (appModel -> Html appMsg) -> Model appModel appMsg -> Html (Msg appMsg)
