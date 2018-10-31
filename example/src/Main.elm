@@ -1,7 +1,7 @@
 module Main exposing (main)
 
 import Browser exposing (..)
-import Debugger
+import Debugger.Browser
 import Html exposing (..)
 import Html.Events exposing (..)
 import String exposing (..)
@@ -38,9 +38,7 @@ view model =
 
 
 main =
-    Debugger.sandbox
-        Debug.toString
-        Debug.toString
+    Debugger.Browser.sandbox
         { init = init
         , update = update
         , view = view
