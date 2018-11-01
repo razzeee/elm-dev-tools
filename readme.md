@@ -1,2 +1,2 @@
-# Elm Debugger
+# Elm Debug
 Debug Elm programs!
