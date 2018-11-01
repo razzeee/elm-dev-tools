@@ -1,11 +1,12 @@
 module ZipList exposing
     ( ZipList
-    , append
     , atHead
     , atTail
     , backward
+    , dropHeads
     , forward
-    , prepend
+    , insert
+    , length
     , singleton
     , toHead
     , toIndex
@@ -19,6 +20,25 @@ type alias ZipList value =
     , current : value
     , tails : List value
     }
+
+
+insert : value -> ZipList value -> ZipList value
+insert value zl =
+    { zl
+        | heads = zl.heads
+        , current = value
+        , tails = zl.current :: zl.tails
+    }
+
+
+dropHeads : ZipList value -> ZipList value
+dropHeads zl =
+    { zl | heads = [] }
+
+
+length : ZipList value -> Int
+length zl =
+    List.length zl.heads + 1 + List.length zl.tails
 
 
 singleton : value -> ZipList value
@@ -44,36 +64,18 @@ atTail zl =
     zl.tails == []
 
 
-append : value -> ZipList value -> ZipList value
-append value zl =
-    { zl
-        | heads = toList zl
-        , current = value
-        , tails = []
-    }
-
-
-prepend : value -> ZipList value -> ZipList value
-prepend value zl =
-    { zl
-        | heads = []
-        , current = value
-        , tails = toList zl
-    }
-
-
 toIndex : Int -> ZipList value -> ZipList value
 toIndex index zl =
     let
         diff =
-            List.length zl.heads - index
+            List.length zl.tails - index
 
         op =
             if diff > 0 then
-                forward
+                backward
 
             else
-                backward
+                forward
     in
     zl
         |> List.foldl

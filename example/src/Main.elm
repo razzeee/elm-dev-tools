@@ -13,7 +13,8 @@ type Msg
 
 
 init =
-    { count = 0 }
+    { count = 0
+    }
 
 
 update msg model =

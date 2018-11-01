@@ -1,11 +1,9 @@
 module Debug.Internals exposing (Program, toInit, toUpdate, toView, view)
 
 import Browser
-import Element exposing (Element)
-import Element.Background as Background
-import Element.Border as Border
-import Element.Input as Input
-import Html exposing (Html)
+import Html as H exposing (Html)
+import Html.Attributes as Ha
+import Html.Events as He
 import ZipList exposing (ZipList)
 
 
@@ -19,6 +17,9 @@ type alias Model appModel appMsg =
 
 type Msg appMsg
     = UpdateApp appMsg
+    | TimeTravel Int
+    | ToggleAppModelVisible
+    | ToggleAppMessagesVisible
 
 
 type alias Program flags appModel appMsg =
@@ -29,8 +30,8 @@ toInit : appModel -> Model appModel appMsg
 toInit appModel =
     { appModels = ZipList.singleton appModel
     , appMessages = []
-    , isAppModelVisible = False
-    , isAppMessagesVisible = False
+    , isAppModelVisible = True
+    , isAppMessagesVisible = True
     }
 
 
@@ -42,53 +43,117 @@ toUpdate updateApp msg model =
                 newAppModel =
                     updateApp appMsg model.appModels.current
             in
-            { model | appModels = ZipList.prepend newAppModel model.appModels }
+            { model
+                | appModels = ZipList.dropHeads (ZipList.insert newAppModel model.appModels)
+                , appMessages = appMsg :: model.appMessages
+            }
+
+        TimeTravel index ->
+            { model | appModels = ZipList.toIndex index model.appModels }
+
+        ToggleAppModelVisible ->
+            { model | isAppModelVisible = not model.isAppModelVisible }
+
+        ToggleAppMessagesVisible ->
+            { model | isAppMessagesVisible = not model.isAppMessagesVisible }
 
 
-viewSlider : Element (Msg appMsg)
-viewSlider =
-    Input.slider
-        [ Element.height (Element.px 30)
+viewCurrentAppModel : (appModel -> String) -> Bool -> appModel -> Html (Msg appMsg)
+viewCurrentAppModel appModelToString isVisible appModel =
+    H.div []
+        [ H.text <|
+            if isVisible then
+                appModelToString appModel
 
-        -- Here is where we're creating/styling the "track"
-        , Element.behindContent
-            (Element.el
-                [ Element.width Element.fill
-                , Element.height (Element.px 2)
-                , Element.centerY
-                , Background.color grey
-                , Border.rounded 2
-                ]
-                Element.none
+            else
+                ""
+        ]
+
+
+viewAppModelSlider : ZipList appModel -> Html (Msg appMsg)
+viewAppModelSlider appModels =
+    H.input
+        [ Ha.type_ "range"
+        , Ha.min "0"
+        , Ha.max (String.fromInt (ZipList.length appModels - 1))
+        , Ha.disabled (ZipList.length appModels == 1)
+        , Ha.value (String.fromInt (List.length appModels.tails))
+        , He.onInput (String.toInt >> Maybe.withDefault 0 >> TimeTravel)
+        ]
+        []
+
+
+viewToggleButton : Msg appMsg -> String -> Bool -> Html (Msg appMsg)
+viewToggleButton onClick label isSelected =
+    H.button
+        [ Ha.style "font-weight"
+            (if isSelected then
+                "bold"
+
+             else
+                "normal"
+            )
+        , He.onClick onClick
+        ]
+        [ H.text label ]
+
+
+viewInitAppMessage appModelIndex =
+    H.div
+        [ He.onClick (TimeTravel 0)
+        , Ha.style "background-color"
+            (if appModelIndex == 0 then
+                "lightgray"
+
+             else
+                "white"
             )
         ]
-        { onChange = AdjustValue
-        , label = Input.labelAbove [] (Element.text "My Slider Value")
-        , min = 0
-        , max = 75
-        , step = Nothing
-        , value = List.length (List.length model.appModels.heads)
-        , thumb =
-            Input.defaultThumb
-        }
+        [ H.text "Initial State", H.text "0" ]
 
 
-view : Model appModel appMsg -> Element (Msg appMsg)
+viewAppMessage : Int -> Int -> appMsg -> Html (Msg appMsg)
+viewAppMessage appModelIndex index appMessage =
+    H.div
+        [ He.onClick (TimeTravel index)
+        , Ha.style "background-color"
+            (if index == appModelIndex then
+                "lightgray"
+
+             else
+                "white"
+            )
+        ]
+        [ H.text (Debug.toString appMessage), H.text (String.fromInt index) ]
+
+
+viewAppMessageList : (appMsg -> String) -> Bool -> Int -> List appMsg -> Html (Msg appMsg)
+viewAppMessageList appMsgToString isVisible appModelIndex appMessages =
+    if isVisible then
+        H.div [] (viewInitAppMessage appModelIndex :: List.indexedMap (\index appMessage -> viewAppMessage appModelIndex (index + 1) appMessage) appMessages)
+
+    else
+        H.text ""
+
+
+view : Model appModel appMsg -> Html (Msg appMsg)
 view { appModels, appMessages, isAppModelVisible, isAppMessagesVisible } =
-    Element.el []
-        (Element.row []
-            viewSlider
-        )
+    H.div
+        [ Ha.style "position" "fixed"
+        , Ha.style "bottom" "0"
+        , Ha.style "right" "0"
+        ]
+        [ viewAppMessageList Debug.toString isAppMessagesVisible (List.length appModels.tails) appMessages
+        , viewCurrentAppModel Debug.toString isAppModelVisible appModels.current
+        , viewAppModelSlider appModels
+        , viewToggleButton ToggleAppModelVisible "model" isAppModelVisible
+        , viewToggleButton ToggleAppMessagesVisible "msg" isAppMessagesVisible
+        ]
 
 
 toView : (appModel -> Html appMsg) -> Model appModel appMsg -> Html (Msg appMsg)
 toView viewApp model =
-    let
-        appElement =
-            Element.map UpdateApp (Element.html (viewApp model.appModels.current))
-    in
-    Element.layout [] <|
-        Element.el
-            [ Element.below (view model)
-            ]
-            appElement
+    H.div []
+        [ H.map UpdateApp (viewApp model.appModels.current)
+        , view model
+        ]
