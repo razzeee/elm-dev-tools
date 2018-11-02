@@ -120,7 +120,7 @@ viewMessages : List String -> Int -> Html (Msg msg)
 viewMessages messages currentIndex =
     H.div
         [ Ha.style "overflow-y" "scroll"
-        , Ha.style "max-height" "300px"
+        , Ha.style "max-height" "200px"
         ]
         (List.indexedMap (viewMessage currentIndex) messages)
 
