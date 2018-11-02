@@ -77,6 +77,7 @@ viewSlider length currentIndex =
             , Ha.max (String.fromInt (length - 1))
             , Ha.min (String.fromInt 0)
             , Ha.value (String.fromInt currentIndex)
+            , Ha.disabled (length == 1)
             , He.onInput (ToUpdateAt << Maybe.withDefault 0 << String.toInt)
             ]
             []
