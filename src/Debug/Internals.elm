@@ -31,7 +31,7 @@ toInit appModel =
     { appModels = ZipList.singleton appModel
     , appMessages = []
     , isAppModelVisible = True
-    , isAppMessagesVisible = True
+    , isAppMessagesVisible = False
     }
 
 
@@ -45,7 +45,7 @@ toUpdate updateApp msg model =
             in
             { model
                 | appModels = ZipList.dropHeads (ZipList.insert newAppModel model.appModels)
-                , appMessages = appMsg :: model.appMessages
+                , appMessages = appMsg :: List.drop (List.length model.appModels.heads) model.appMessages
             }
 
         TimeTravel index ->
@@ -60,71 +60,113 @@ toUpdate updateApp msg model =
 
 viewCurrentAppModel : (appModel -> String) -> Bool -> appModel -> Html (Msg appMsg)
 viewCurrentAppModel appModelToString isVisible appModel =
-    H.div []
-        [ H.text <|
-            if isVisible then
-                appModelToString appModel
+    if isVisible then
+        H.div
+            [ Ha.style "padding" "4px"
+            , Ha.style "border-bottom" "1px solid #eeeeee"
+            ]
+            [ H.text (appModelToString appModel) ]
 
-            else
-                ""
-        ]
+    else
+        H.text ""
 
 
 viewAppModelSlider : ZipList appModel -> Html (Msg appMsg)
 viewAppModelSlider appModels =
-    H.input
-        [ Ha.type_ "range"
-        , Ha.min "0"
-        , Ha.max (String.fromInt (ZipList.length appModels - 1))
-        , Ha.disabled (ZipList.length appModels == 1)
-        , Ha.value (String.fromInt (List.length appModels.tails))
-        , He.onInput (String.toInt >> Maybe.withDefault 0 >> TimeTravel)
+    H.div
+        [ Ha.style "padding" "4px"
+        , Ha.style "border-bottom" "1px solid #eeee"
         ]
-        []
+        [ H.input
+            [ Ha.type_ "range"
+            , Ha.min "0"
+            , Ha.max (String.fromInt (ZipList.length appModels - 1))
+            , Ha.disabled (ZipList.length appModels == 1)
+            , Ha.value (String.fromInt (List.length appModels.tails))
+            , He.onInput (String.toInt >> Maybe.withDefault 0 >> TimeTravel)
+            ]
+            []
+        ]
 
 
 viewToggleButton : Msg appMsg -> String -> Bool -> Html (Msg appMsg)
 viewToggleButton onClick label isSelected =
-    H.button
-        [ Ha.style "font-weight"
+    H.div
+        [ Ha.style "cursor" "pointer"
+        , Ha.style "border-right" "1px solid #eeee"
+        , Ha.style "padding" "4px"
+        , Ha.style "width" "50%"
+        , Ha.style "background-color"
             (if isSelected then
-                "bold"
+                "#60B5CC"
 
              else
-                "normal"
+                "white"
+            )
+        , Ha.style "color"
+            (if isSelected then
+                "white"
+
+             else
+                "black"
             )
         , He.onClick onClick
         ]
         [ H.text label ]
 
 
+viewInitAppMessage : Int -> Html (Msg appMsg)
 viewInitAppMessage appModelIndex =
     H.div
         [ He.onClick (TimeTravel 0)
+        , Ha.style "cursor" "pointer"
+        , Ha.style "padding" "0px 4px"
+        , Ha.style "border-bottom" "1px solid #eeeeee"
         , Ha.style "background-color"
             (if appModelIndex == 0 then
-                "lightgray"
+                "#60B5CC"
 
              else
                 "white"
             )
+        , Ha.style "color"
+            (if appModelIndex == 0 then
+                "white"
+
+             else
+                "black"
+            )
         ]
-        [ H.text "Initial State", H.text "0" ]
+        [ H.span [] [ H.text "Init" ]
+        , H.span [ Ha.style "float" "right" ] [ H.text "0" ]
+        ]
 
 
 viewAppMessage : Int -> Int -> appMsg -> Html (Msg appMsg)
 viewAppMessage appModelIndex index appMessage =
     H.div
         [ He.onClick (TimeTravel index)
+        , Ha.style "cursor" "pointer"
+        , Ha.style "padding" "0px 4px"
+        , Ha.style "border-bottom" "1px solid #eeeeee"
         , Ha.style "background-color"
             (if index == appModelIndex then
-                "lightgray"
+                "#60B5CC"
 
              else
                 "white"
             )
+        , Ha.style "color"
+            (if index == appModelIndex then
+                "white"
+
+             else
+                "black"
+            )
         ]
-        [ H.text (Debug.toString appMessage), H.text (String.fromInt index) ]
+        [ H.span [] [ H.text (Debug.toString appMessage) ]
+        , H.span [ Ha.style "float" "right" ] [ H.text (String.fromInt index) ]
+        ]
 
 
 viewAppMessageList : (appMsg -> String) -> Bool -> Int -> List appMsg -> Html (Msg appMsg)
@@ -139,15 +181,22 @@ viewAppMessageList appMsgToString isVisible appModelIndex appMessages =
 view : Model appModel appMsg -> Html (Msg appMsg)
 view { appModels, appMessages, isAppModelVisible, isAppMessagesVisible } =
     H.div
-        [ Ha.style "position" "fixed"
+        [ Ha.style "font-family" "'Source Sans Pro', 'Trebuchet MS', 'Lucida Grande', 'Bitstream Vera Sans', 'Helvetica Neue', sans-serif"
+        , Ha.style "position" "fixed"
         , Ha.style "bottom" "0"
         , Ha.style "right" "0"
+        , Ha.style "border" "1px solid #eeeeee"
         ]
         [ viewAppMessageList Debug.toString isAppMessagesVisible (List.length appModels.tails) appMessages
         , viewCurrentAppModel Debug.toString isAppModelVisible appModels.current
         , viewAppModelSlider appModels
-        , viewToggleButton ToggleAppModelVisible "model" isAppModelVisible
-        , viewToggleButton ToggleAppMessagesVisible "msg" isAppMessagesVisible
+        , H.div
+            [ Ha.style "display" "flex"
+            , Ha.style "justify-content" "stretch"
+            ]
+            [ viewToggleButton ToggleAppModelVisible "model" isAppModelVisible
+            , viewToggleButton ToggleAppMessagesVisible "msg" isAppMessagesVisible
+            ]
         ]
 
 
