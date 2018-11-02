@@ -50,10 +50,10 @@ toView viewApp model =
 
 
 viewDebugger : Model model -> Html (Msg msg)
-viewDebugger model =
+viewDebugger { updates } =
     let
         currentUpdateIndex =
-            List.length model.updates.tails
+            List.length updates.tails
     in
     H.div
         [ Ha.style "font-family"
@@ -63,9 +63,15 @@ viewDebugger model =
         , Ha.style "right" "0"
         , Ha.style "border" "1px solid #eeeeee"
         ]
-        [ viewMessages (List.map Tuple.first (ZipList.toList model.updates)) currentUpdateIndex
-        , viewModel (Tuple.second model.updates.current)
-        , viewSlider (ZipList.length model.updates) currentUpdateIndex
+        [ viewMessages
+            (List.map Tuple.first
+                (ZipList.toList
+                    updates
+                )
+            )
+            currentUpdateIndex
+        , viewModel (Tuple.second updates.current)
+        , viewSlider (ZipList.length updates) currentUpdateIndex
         ]
 
 
@@ -104,6 +110,7 @@ viewMessage currentIndex index msgText =
         [ H.text msgText
         , H.span
             [ Ha.style "float" "right"
+            , Ha.style "margin-left" "10px"
             ]
             [ H.text (String.fromInt index) ]
         ]
@@ -111,7 +118,11 @@ viewMessage currentIndex index msgText =
 
 viewMessages : List String -> Int -> Html (Msg msg)
 viewMessages messages currentIndex =
-    H.div [] (List.indexedMap (viewMessage currentIndex) messages)
+    H.div
+        [ Ha.style "overflow-y" "scroll"
+        , Ha.style "max-height" "300px"
+        ]
+        (List.indexedMap (viewMessage currentIndex) messages)
 
 
 viewModel : model -> Html (Msg msg)
