@@ -51,7 +51,7 @@ singleton value =
 
 toList : ZipList value -> List value
 toList zl =
-    List.reverse zl.heads ++ [ zl.current ] ++ zl.tails
+    List.reverse zl.tails ++ [ zl.current ] ++ zl.heads
 
 
 atHead : ZipList value -> Bool
