@@ -5,13 +5,16 @@ module ZipList exposing
     , backward
     , dropHeads
     , forward
+    , indexedMap
     , insert
     , length
+    , map
     , singleton
     , toHead
     , toIndex
     , toList
     , toTail
+    , trim
     )
 
 
@@ -19,6 +22,31 @@ type alias ZipList value =
     { heads : List value
     , current : value
     , tails : List value
+    }
+
+
+trim : Int -> ZipList value -> ZipList value
+trim newLength zl =
+    if length zl <= newLength then
+        zl
+
+    else if List.length zl.heads >= List.length zl.tails then
+        trim newLength { zl | heads = List.take (List.length zl.heads - 1) zl.heads }
+
+    else
+        trim newLength { zl | tails = List.take (List.length zl.tails - 1) zl.tails }
+
+
+map : (value -> a) -> ZipList value -> ZipList a
+map op zl =
+    { heads = List.map op zl.heads, current = op zl.current, tails = List.map op zl.tails }
+
+
+indexedMap : (Int -> value -> a) -> ZipList value -> ZipList a
+indexedMap op zl =
+    { heads = List.indexedMap (\headIndex value -> op (headIndex + 1 + List.length zl.tails) value) zl.heads
+    , current = op (List.length zl.tails) zl.current
+    , tails = List.reverse (List.indexedMap op (List.reverse zl.tails))
     }
 
 

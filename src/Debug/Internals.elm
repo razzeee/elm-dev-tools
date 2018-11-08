@@ -9,6 +9,7 @@ import Html.Events as He
 import Json.Decode as Jd
 import Json.Encode as Je
 import Task exposing (Task)
+import Tuple
 import ZipList as Zl exposing (ZipList)
 
 
@@ -30,7 +31,7 @@ type alias Model model =
     , position : Position
     , isExpanded : Bool
     , isDragging : Bool
-    , isHovered : Bool
+    , isHovering : Bool
     }
 
 
@@ -38,8 +39,8 @@ type Msg msg
     = Update msg
     | ToUpdateAt Int
     | ToggleExpanded
-    | ToggleDragging Bool
-    | ToggleHovered Bool
+    | SetDragging Bool
+    | SetHovering Bool
     | DragTo Position
     | ResizeViewport Size
     | Dismiss
@@ -74,7 +75,7 @@ toInit ( model, cmd ) =
       , viewportSize = { width = 0, height = 0 }
       , isExpanded = False
       , isDragging = False
-      , isHovered = False
+      , isHovering = False
       }
     , Cmd.batch
         [ Cmd.map Update cmd
@@ -108,7 +109,7 @@ mouseMoveDecoder isExpanded { left, top } =
 
 updatePosition : Bool -> Size -> Position -> Position
 updatePosition isExpanded { height, width } { top, left } =
-    { top = clamp 0 (height - toHeight isExpanded) top
+    { top = clamp 0 (height - toWidth isExpanded) top
     , left = clamp 0 (width - toWidth isExpanded) left
     }
 
@@ -139,10 +140,10 @@ toUpdate update msg model =
             , Cmd.none
             )
 
-        ToggleHovered isHovered ->
-            ( { model | isHovered = isHovered }, Cmd.none )
+        SetHovering isHovering ->
+            ( { model | isHovering = isHovering }, Cmd.none )
 
-        ToggleDragging isDragging ->
+        SetDragging isDragging ->
             ( { model | isDragging = isDragging }, Cmd.none )
 
         ResizeViewport viewportSize ->
@@ -189,7 +190,7 @@ toSubscriptions subscriptions model =
         , if model.isDragging then
             Sub.batch
                 [ Be.onMouseMove (Jd.map DragTo (mouseMoveDecoder model.isExpanded model.position))
-                , Be.onMouseUp (Jd.succeed (ToggleDragging False))
+                , Be.onMouseUp (Jd.succeed (SetDragging False))
                 ]
 
           else
@@ -217,8 +218,8 @@ toPx n =
 
 
 toBoxShadow : Bool -> String
-toBoxShadow isHovered =
-    if isHovered then
+toBoxShadow isHovering =
+    if isHovering then
         "rgba(0,0,0,.3) 0px 0px 6px 1px"
 
     else
@@ -244,18 +245,22 @@ joinStrings separator strings =
             ""
 
 
-toHeight : Bool -> Int
+toHeight : Bool -> String
 toHeight isExpanded =
+    if isExpanded then
+        "auto"
+
+    else
+        "76px"
+
+
+toWidth : Bool -> Int
+toWidth isExpanded =
     if isExpanded then
         256
 
     else
         76
-
-
-toWidth : Bool -> Int
-toWidth =
-    toHeight
 
 
 onRightClick : msg -> H.Attribute msg
@@ -288,15 +293,15 @@ viewModel model =
         ]
 
 
-viewMessages : List String -> Int -> Html (Msg msg)
+viewMessages : List ( Int, String ) -> Int -> Html (Msg msg)
 viewMessages messages currentIndex =
     H.div
         []
-        (List.indexedMap (viewMessage currentIndex) messages)
+        (List.map (viewMessage currentIndex) messages)
 
 
-viewMessage : Int -> Int -> String -> Html (Msg msg)
-viewMessage currentIndex index label =
+viewMessage : Int -> ( Int, String ) -> Html (Msg msg)
+viewMessage currentIndex ( index, label ) =
     H.div
         ([ Ha.style "border-top" "1px solid #eeeeee"
          , Ha.style "padding" "0px 4px"
@@ -322,15 +327,16 @@ viewMessage currentIndex index label =
 
 
 viewDebugger : Model model -> Html (Msg msg)
-viewDebugger { updates, position, isExpanded, isDragging, isHovered, viewportSize } =
+viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSize } =
     H.div
         ([ Ha.style "position" "fixed"
+         , Ha.style "overflow" "hidden"
          , Ha.style "background-color" "white"
          , Ha.style "cursor" "pointer"
          , Ha.style "width" (toPx (toWidth isExpanded))
-         , Ha.style "height" (toPx (toHeight isExpanded))
+         , Ha.style "height" (toHeight isExpanded)
          , Ha.style "border-radius" (toBorderRadius isExpanded)
-         , Ha.style "box-shadow" (toBoxShadow isHovered)
+         , Ha.style "box-shadow" (toBoxShadow isHovering)
          , Ha.style "left" (toPx position.left)
          , Ha.style "top" (toPx position.top)
          , Ha.style "transition" <|
@@ -342,22 +348,22 @@ viewDebugger { updates, position, isExpanded, isDragging, isHovered, viewportSiz
                 , "transform 140ms linear 70ms"
                 ]
          , onRightClick ToggleExpanded
-         , He.onMouseEnter (ToggleHovered True)
-         , He.onMouseLeave (ToggleHovered False)
+         , He.onMouseEnter (SetHovering True)
+         , He.onMouseLeave (SetHovering False)
          ]
             ++ (if isExpanded then
                     []
 
                 else
                     [ He.onDoubleClick Dismiss
-                    , He.onMouseDown (ToggleDragging True)
+                    , He.onMouseDown (SetDragging True)
                     ]
                )
         )
         (if isExpanded then
             [ viewSlider (Zl.length updates) (List.length updates.tails)
             , viewModel (Tuple.second updates.current)
-            , viewMessages (List.map Tuple.first (Zl.toList updates)) (List.length updates.tails)
+            , viewMessages (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( label, _ ) -> ( index, label )) updates))) (List.length updates.tails)
             ]
 
          else
