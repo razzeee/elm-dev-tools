@@ -8,7 +8,9 @@ import Html.Attributes as Ha
 import Html.Events as He
 import Json.Decode as Jd
 import Json.Encode as Je
+import Process as P
 import Task exposing (Task)
+import Time
 import Tuple
 import ZipList as Zl exposing (ZipList)
 
@@ -32,6 +34,7 @@ type alias Model model =
     , isExpanded : Bool
     , isDragging : Bool
     , isHovering : Bool
+    , isModelOverlayed : Bool
     }
 
 
@@ -39,6 +42,7 @@ type Msg msg
     = Update msg
     | ToUpdateAt Int
     | ToggleExpanded
+    | ToggleModelOverlay
     | SetDragging Bool
     | SetHovering Bool
     | DragTo Position
@@ -71,11 +75,12 @@ viewportToSize { viewport } =
 toInit : ( model, Cmd msg ) -> ( Model model, Cmd (Msg msg) )
 toInit ( model, cmd ) =
     ( { updates = Zl.singleton ( "Init", model )
-      , position = { left = 300, top = 300 }
+      , position = { left = 10000, top = 10000 }
       , viewportSize = { width = 0, height = 0 }
       , isExpanded = False
       , isDragging = False
       , isHovering = False
+      , isModelOverlayed = True
       }
     , Cmd.batch
         [ Cmd.map Update cmd
@@ -84,18 +89,48 @@ toInit ( model, cmd ) =
     )
 
 
+viewModelOverlay : Bool -> Size -> model -> Html (Msg msg)
+viewModelOverlay isModelOverlayed size model =
+    if isModelOverlayed then
+        H.div
+            [ Ha.style "position" "fixed"
+            , Ha.style "height" "100vh"
+            , Ha.style "width" "100vw"
+            , Ha.style "background-color" "rgba(255,255,255,.8)"
+            , Ha.style "color" "black"
+            , Ha.style "z-index" "2147483646"
+            , Ha.style "top" "0"
+            , Ha.style "left" "0"
+            , Ha.style "height" (toPx size.height)
+            , Ha.style "width" (toPx size.width)
+            , Ha.style "padding" "5vw"
+            ]
+            [ H.div
+                []
+                [ H.text (Debug.toString model)
+                ]
+            ]
+
+    else
+        H.text ""
+
+
 toHtml : (model -> Html msg) -> Model model -> Html (Msg msg)
 toHtml view model =
     H.div []
-        [ H.map Update (view (Tuple.second model.updates.current))
-        , viewDebugger model
+        [ viewDebugger model
+        , viewModelOverlay model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+        , H.map Update (view (Tuple.second model.updates.current))
         ]
 
 
 toDocument : (model -> Browser.Document msg) -> Model model -> Browser.Document (Msg msg)
 toDocument view model =
     { title = "Debug"
-    , body = viewDebugger model :: List.map (H.map Update) (.body (view (Tuple.second model.updates.current)))
+    , body =
+        viewDebugger model
+            :: viewModelOverlay model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+            :: List.map (H.map Update) (.body (view (Tuple.second model.updates.current)))
     }
 
 
@@ -107,10 +142,10 @@ mouseMoveDecoder isExpanded { left, top } =
         (Jd.field "clientY" Jd.int)
 
 
-updatePosition : Bool -> Size -> Position -> Position
-updatePosition isExpanded { height, width } { top, left } =
-    { top = clamp 0 (height - toWidth isExpanded) top
-    , left = clamp 0 (width - toWidth isExpanded) left
+updatePosition : Int -> Bool -> Size -> Position -> Position
+updatePosition messageCount isExpanded { height, width } { top, left } =
+    { top = clamp 0 (height - toWidth isExpanded) (top - 10)
+    , left = clamp 0 (width - toWidth isExpanded) (left - toWidth isExpanded // 2)
     }
 
 
@@ -132,12 +167,29 @@ toUpdate update msg model =
         ToUpdateAt index ->
             ( { model | updates = Zl.toIndex index model.updates }, Cmd.none )
 
+        ToggleModelOverlay ->
+            ( { model
+                | isModelOverlayed = not model.isModelOverlayed
+                , isExpanded = True
+              }
+            , if model.isModelOverlayed == False then
+                Task.perform identity (Task.succeed Dismiss)
+
+              else
+                Cmd.none
+            )
+
         ToggleExpanded ->
             ( { model
                 | isExpanded = not model.isExpanded
-                , position = updatePosition (not model.isExpanded) model.viewportSize model.position
+                , isModelOverlayed = model.isModelOverlayed && not model.isExpanded
+                , position = updatePosition (min 10 (Zl.length model.updates)) (not model.isExpanded) model.viewportSize model.position
               }
-            , Cmd.none
+            , if model.isExpanded then
+                Task.perform identity (Task.succeed Dismiss)
+
+              else
+                Cmd.none
             )
 
         SetHovering isHovering ->
@@ -149,15 +201,15 @@ toUpdate update msg model =
         ResizeViewport viewportSize ->
             ( { model
                 | viewportSize = viewportSize
-                , position = updatePosition model.isExpanded viewportSize model.position
               }
-            , Cmd.none
+            , Task.perform identity (Task.andThen (\_ -> Task.succeed Dismiss) (P.sleep 100))
             )
 
         DragTo position ->
             ( { model
                 | position =
                     updatePosition
+                        (min 10 (Zl.length model.updates))
                         model.isExpanded
                         model.viewportSize
                         position
@@ -169,6 +221,7 @@ toUpdate update msg model =
             ( { model
                 | position =
                     updatePosition
+                        (min 10 (Zl.length model.updates))
                         model.isExpanded
                         model.viewportSize
                         { top = model.viewportSize.height
@@ -198,6 +251,16 @@ toSubscriptions subscriptions model =
         ]
 
 
+blue : String
+blue =
+    "#60B5CC"
+
+
+gray : String
+gray =
+    "#eeeeee"
+
+
 unselectable : List (H.Attribute msg) -> List (Html msg) -> Html msg
 unselectable attributes =
     H.div
@@ -220,10 +283,10 @@ toPx n =
 toBoxShadow : Bool -> String
 toBoxShadow isHovering =
     if isHovering then
-        "rgba(0,0,0,.3) 0px 0px 6px 1px"
+        gray ++ " 0px 0px 8px 2px"
 
     else
-        "rgba(0,0,0,.2) 0px 0px 4px 1px"
+        gray ++ " 0px 0px 8px 1px"
 
 
 toBorderRadius : Bool -> String
@@ -245,13 +308,13 @@ joinStrings separator strings =
             ""
 
 
-toHeight : Bool -> String
-toHeight isExpanded =
+toHeight : Int -> Bool -> Int
+toHeight messageCount isExpanded =
     if isExpanded then
-        "auto"
+        round (toFloat (messageCount + 3) * 19.09)
 
     else
-        "76px"
+        76
 
 
 toWidth : Bool -> Int
@@ -272,7 +335,8 @@ viewSlider : Int -> Int -> Html (Msg msg)
 viewSlider length currentIndex =
     H.div []
         [ H.input
-            [ Ha.style "width" "95%"
+            [ Ha.style "width" "92%"
+            , Ha.style "margin" "0 4%"
             , Ha.type_ "range"
             , Ha.max (String.fromInt (length - 1))
             , Ha.min (String.fromInt 0)
@@ -284,30 +348,30 @@ viewSlider length currentIndex =
         ]
 
 
-viewModel : model -> Html (Msg msg)
-viewModel model =
-    H.div
-        [ Ha.style "padding" "4px"
-        ]
-        [ H.text (Debug.toString model)
-        ]
-
-
 viewMessages : List ( Int, String ) -> Int -> Html (Msg msg)
 viewMessages messages currentIndex =
-    H.div
+    unselectable
         []
-        (List.map (viewMessage currentIndex) messages)
+        (List.indexedMap (viewMessage currentIndex) messages)
 
 
-viewMessage : Int -> ( Int, String ) -> Html (Msg msg)
-viewMessage currentIndex ( index, label ) =
+fitText : Int -> String -> String
+fitText maxLength text =
+    if String.length text > maxLength then
+        String.left (maxLength - 3) text ++ "..."
+
+    else
+        text
+
+
+viewMessage : Int -> Int -> ( Int, String ) -> Html (Msg msg)
+viewMessage currentIndex viewIndex ( index, label ) =
     H.div
-        ([ Ha.style "border-top" "1px solid #eeeeee"
+        ([ useIf (viewIndex /= 0) (Ha.style "border-top" ("1px solid " ++ gray))
          , Ha.style "padding" "0px 4px"
          ]
             ++ (if currentIndex == index then
-                    [ Ha.style "background-color" "#60B5CC"
+                    [ Ha.style "background-color" blue
                     , Ha.style "color" "white"
                     ]
 
@@ -317,39 +381,114 @@ viewMessage currentIndex ( index, label ) =
                     ]
                )
         )
-        [ H.text label
+        [ H.text (fitText 22 label)
         , H.span
             [ Ha.style "float" "right"
             , Ha.style "margin-left" "10px"
             ]
-            [ H.text (String.fromInt index) ]
+            [ H.text (fitText 3 (String.fromInt index)) ]
+        ]
+
+
+drag : List (H.Attribute (Msg msg)) -> List (Html (Msg msg)) -> Html (Msg msg)
+drag attributes =
+    H.div
+        (attributes
+            ++ [ Ha.style "cursor" "grab"
+               , He.onMouseDown (SetDragging True)
+               , He.onMouseUp (SetDragging False)
+               ]
+        )
+
+
+toSelectedColor : Bool -> String
+toSelectedColor isSelected =
+    if isSelected then
+        "white"
+
+    else
+        "black"
+
+
+useIf : Bool -> H.Attribute msg -> H.Attribute msg
+useIf predicate attribute =
+    if predicate then
+        attribute
+
+    else
+        Ha.style "" ""
+
+
+useMaybe : Maybe value -> (value -> H.Attribute msg) -> H.Attribute msg
+useMaybe maybe toAttribute =
+    case maybe of
+        Just value ->
+            toAttribute value
+
+        Nothing ->
+            Ha.style "" ""
+
+
+toSelectedBackgroundColor : Bool -> String
+toSelectedBackgroundColor isSelected =
+    if isSelected then
+        blue
+
+    else
+        "initial"
+
+
+viewModelOverlayToggleButton : String -> Bool -> Html (Msg msg)
+viewModelOverlayToggleButton label isSelected =
+    unselectable
+        [ Ha.style "display" "inline-block"
+        , Ha.style "text-align" "center"
+        , Ha.style "width" "50%"
+        , Ha.style "color" (toSelectedColor isSelected)
+        , Ha.style "background-color" (toSelectedBackgroundColor isSelected)
+        , useIf (not isSelected) (He.onClick ToggleModelOverlay)
+        , useIf (not isSelected) (Ha.style "cursor" "pointer")
+        ]
+        [ H.text label
+        ]
+
+
+viewModelOverlayToggle : Bool -> Html (Msg msg)
+viewModelOverlayToggle isModelOverlayed =
+    H.div
+        [ Ha.style "width" "100%"
+        ]
+        [ viewModelOverlayToggleButton "App" (not isModelOverlayed)
+        , viewModelOverlayToggleButton "Model" isModelOverlayed
         ]
 
 
 viewDebugger : Model model -> Html (Msg msg)
-viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSize } =
+viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSize, isModelOverlayed } =
     H.div
         ([ Ha.style "position" "fixed"
          , Ha.style "overflow" "hidden"
+         , Ha.style "font-family" "system-ui"
          , Ha.style "background-color" "white"
-         , Ha.style "cursor" "pointer"
-         , Ha.style "width" (toPx (toWidth isExpanded))
-         , Ha.style "height" (toHeight isExpanded)
-         , Ha.style "border-radius" (toBorderRadius isExpanded)
-         , Ha.style "box-shadow" (toBoxShadow isHovering)
-         , Ha.style "left" (toPx position.left)
-         , Ha.style "top" (toPx position.top)
+         , Ha.style "z-index" "2147483647"
          , Ha.style "transition" <|
             joinStrings ", "
                 [ "box-shadow 70ms linear"
                 , "border-radius 70ms linear"
-                , "width 140ms linear 70ms"
-                , "height 140ms linear 70ms"
-                , "transform 140ms linear 70ms"
+                , "width 70ms linear"
+                , "height 140ms linear"
+                , "top 40ms linear"
+                , "left 40ms linear"
+                , "background-color 0 linear 70ms"
                 ]
-         , onRightClick ToggleExpanded
+         , Ha.style "width" (toPx (toWidth isExpanded))
+         , Ha.style "border-radius" (toBorderRadius isExpanded)
+         , Ha.style "box-shadow" (toBoxShadow isHovering)
+         , Ha.style "left" (toPx position.left)
+         , Ha.style "top" (toPx position.top)
          , He.onMouseEnter (SetHovering True)
          , He.onMouseLeave (SetHovering False)
+         , onRightClick ToggleExpanded
          ]
             ++ (if isExpanded then
                     []
@@ -361,16 +500,29 @@ viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSi
                )
         )
         (if isExpanded then
-            [ viewSlider (Zl.length updates) (List.length updates.tails)
-            , viewModel (Tuple.second updates.current)
+            [ drag
+                [ Ha.style "text-align" "center"
+                , He.onDoubleClick Dismiss
+                ]
+                [ unselectable []
+                    [ H.text "Debug"
+                    ]
+                ]
+            , viewSlider (Zl.length updates) (List.length updates.tails)
+            , viewModelOverlayToggle isModelOverlayed
             , viewMessages (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( label, _ ) -> ( index, label )) updates))) (List.length updates.tails)
             ]
 
          else
-            [ unselectable
-                [ Ha.style "padding" "28.5px 0"
-                , Ha.style "text-align" "center"
+            [ drag
+                []
+                [ unselectable
+                    [ Ha.style "padding" "28.5px 0"
+                    , Ha.style "text-align" "center"
+                    , Ha.style "background-color" blue
+                    , Ha.style "color" "white"
+                    ]
+                    [ H.text "Debug" ]
                 ]
-                [ H.text "Debug" ]
             ]
         )
