@@ -80,7 +80,7 @@ toInit ( model, cmd ) =
       , isExpanded = False
       , isDragging = False
       , isHovering = False
-      , isModelOverlayed = True
+      , isModelOverlayed = False
       }
     , Cmd.batch
         [ Cmd.map Update cmd
