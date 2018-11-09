@@ -142,8 +142,8 @@ mouseMoveDecoder isExpanded { left, top } =
         (Jd.field "clientY" Jd.int)
 
 
-updatePosition : Int -> Bool -> Size -> Position -> Position
-updatePosition messageCount isExpanded { height, width } { top, left } =
+updatePosition : Bool -> Size -> Position -> Position
+updatePosition isExpanded { height, width } { top, left } =
     { top = clamp 0 (height - toWidth isExpanded) (top - 10)
     , left = clamp 0 (width - toWidth isExpanded) (left - toWidth isExpanded // 2)
     }
@@ -183,13 +183,9 @@ toUpdate update msg model =
             ( { model
                 | isExpanded = not model.isExpanded
                 , isModelOverlayed = model.isModelOverlayed && not model.isExpanded
-                , position = updatePosition (min 10 (Zl.length model.updates)) (not model.isExpanded) model.viewportSize model.position
+                , position = updatePosition (not model.isExpanded) model.viewportSize model.position
               }
-            , if model.isExpanded then
-                Task.perform identity (Task.succeed Dismiss)
-
-              else
-                Cmd.none
+            , Cmd.none
             )
 
         SetHovering isHovering ->
@@ -209,7 +205,6 @@ toUpdate update msg model =
             ( { model
                 | position =
                     updatePosition
-                        (min 10 (Zl.length model.updates))
                         model.isExpanded
                         model.viewportSize
                         position
@@ -221,7 +216,6 @@ toUpdate update msg model =
             ( { model
                 | position =
                     updatePosition
-                        (min 10 (Zl.length model.updates))
                         model.isExpanded
                         model.viewportSize
                         { top = model.viewportSize.height
