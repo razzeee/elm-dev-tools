@@ -1,4 +1,4 @@
-module Debug.Internals exposing (Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
+module Debug.Internals exposing (Configuration, Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
 
 import Browser
 import Browser.Dom as Bd
@@ -13,6 +13,12 @@ import Task exposing (Task)
 import Time
 import Tuple
 import ZipList as Zl exposing (ZipList)
+
+
+type alias Configuration model msg =
+    { printModel : model -> String
+    , printMsg : msg -> String
+    }
 
 
 type alias Position =
@@ -89,8 +95,8 @@ toInit ( model, cmd ) =
     )
 
 
-viewModelOverlay : Bool -> Size -> model -> Html (Msg msg)
-viewModelOverlay isModelOverlayed size model =
+viewModelOverlay : (model -> String) -> Bool -> Size -> model -> Html (Msg msg)
+viewModelOverlay viewModel isModelOverlayed size model =
     if isModelOverlayed then
         H.div
             [ Ha.style "position" "fixed"
@@ -107,7 +113,7 @@ viewModelOverlay isModelOverlayed size model =
             ]
             [ H.div
                 []
-                [ H.text (Debug.toString model)
+                [ H.text (viewModel model)
                 ]
             ]
 
@@ -115,21 +121,21 @@ viewModelOverlay isModelOverlayed size model =
         H.text ""
 
 
-toHtml : (model -> Html msg) -> Model model -> Html (Msg msg)
-toHtml view model =
+toHtml : (model -> String) -> (model -> Html msg) -> Model model -> Html (Msg msg)
+toHtml printModel view model =
     H.div []
         [ viewDebugger model
-        , viewModelOverlay model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+        , viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
         , H.map Update (view (Tuple.second model.updates.current))
         ]
 
 
-toDocument : (model -> Browser.Document msg) -> Model model -> Browser.Document (Msg msg)
-toDocument view model =
+toDocument : (model -> String) -> (model -> Browser.Document msg) -> Model model -> Browser.Document (Msg msg)
+toDocument printModel view model =
     { title = "Debug"
     , body =
         viewDebugger model
-            :: viewModelOverlay model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+            :: viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
             :: List.map (H.map Update) (.body (view (Tuple.second model.updates.current)))
     }
 
@@ -149,8 +155,8 @@ updatePosition isExpanded { height, width } { top, left } =
     }
 
 
-toUpdate : (msg -> model -> ( model, Cmd msg )) -> Msg msg -> Model model -> ( Model model, Cmd (Msg msg) )
-toUpdate update msg model =
+toUpdate : (msg -> String) -> (msg -> model -> ( model, Cmd msg )) -> Msg msg -> Model model -> ( Model model, Cmd (Msg msg) )
+toUpdate printMsg update msg model =
     case msg of
         Update updateMsg ->
             let
@@ -158,7 +164,7 @@ toUpdate update msg model =
                     update updateMsg (Tuple.second model.updates.current)
 
                 updates =
-                    Zl.dropHeads (Zl.insert ( Debug.toString updateMsg, newModel ) model.updates)
+                    Zl.dropHeads (Zl.insert ( printMsg updateMsg, newModel ) model.updates)
             in
             ( { model | updates = updates }
             , Cmd.map Update cmd

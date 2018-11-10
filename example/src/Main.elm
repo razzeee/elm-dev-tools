@@ -17,12 +17,12 @@ type Msg
 
 
 type Page
-    = Login { name : String, pass : String }
+    = Authentication { name : String, pass : String }
     | Counter { name : String, count : Int }
 
 
 init =
-    { page = Login { name = "", pass = "" }
+    { page = Authentication { name = "", pass = "" }
     }
 
 
@@ -30,16 +30,16 @@ update msg model =
     case msg of
         NameInput name ->
             case model.page of
-                Login state ->
-                    { model | page = Login { state | name = name } }
+                Authentication state ->
+                    { model | page = Authentication { state | name = name } }
 
                 _ ->
                     model
 
         PassInput pass ->
             case model.page of
-                Login state ->
-                    { model | page = Login { state | pass = pass } }
+                Authentication state ->
+                    { model | page = Authentication { state | pass = pass } }
 
                 _ ->
                     model
@@ -54,7 +54,7 @@ update msg model =
 
         LogIn ->
             case model.page of
-                Login state ->
+                Authentication state ->
                     { model | page = Counter { name = state.name, count = 0 } }
 
                 _ ->
@@ -63,7 +63,7 @@ update msg model =
         LogOut ->
             case model.page of
                 Counter _ ->
-                    { model | page = Login { name = "", pass = "" } }
+                    { model | page = Authentication { name = "", pass = "" } }
 
                 _ ->
                     model
@@ -82,7 +82,7 @@ view model =
                     ]
                 ]
 
-        Login state ->
+        Authentication state ->
             div []
                 [ input
                     [ type_ "text"
@@ -109,4 +109,5 @@ main =
         { init = init
         , update = update
         , view = view
+        , debug = { printMsg = Debug.toString, printModel = Debug.toString }
         }
