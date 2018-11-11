@@ -283,7 +283,7 @@ toUpdate importJson update msg model =
                         , importError = Nothing
                         , tab = Updates
                       }
-                    , msgToCmd (BatchMessages msgs)
+                    , msgToCmd (BatchMessages (List.reverse msgs))
                     )
 
                 Err err ->
@@ -663,7 +663,7 @@ viewDebugger printMsg msgButtons exportJson { updates, position, isExpanded, isD
                     viewImport importText importError
 
                 Export ->
-                    viewExport (Je.encode 0 (Je.list exportJson (List.filterMap Tuple.first (Zl.toList updates))))
+                    viewExport (Je.encode 0 (Je.list exportJson (List.filterMap Tuple.first (updates.current :: updates.tails))))
             ]
 
          else
