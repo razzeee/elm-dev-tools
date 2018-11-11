@@ -18,6 +18,9 @@ import ZipList as Zl exposing (ZipList)
 type alias Configuration model msg =
     { printModel : model -> String
     , printMsg : msg -> String
+    , importJson : Jd.Decoder msg
+    , exportJson : msg -> Je.Value
+    , msgButtons : List ( String, List msg )
     }
 
 
@@ -33,14 +36,24 @@ type alias Size =
     }
 
 
-type alias Model model =
-    { updates : ZipList ( String, model )
+type Tab
+    = Updates
+    | Messages
+    | Import
+    | Export
+
+
+type alias Model model msg =
+    { updates : ZipList ( Maybe msg, model )
     , viewportSize : Size
     , position : Position
     , isExpanded : Bool
     , isDragging : Bool
     , isHovering : Bool
     , isModelOverlayed : Bool
+    , importText : String
+    , importError : Maybe Jd.Error
+    , tab : Tab
     }
 
 
@@ -53,12 +66,16 @@ type Msg msg
     | SetHovering Bool
     | DragTo Position
     | ResizeViewport Size
+    | OpenTab Tab
+    | InputUpdates String
+    | ImportUpdates
+    | BatchMessages (List msg)
     | Dismiss
     | DoNothing
 
 
 type alias Program flags model msg =
-    Platform.Program flags (Model model) (Msg msg)
+    Platform.Program flags (Model model msg) (Msg msg)
 
 
 doNothing : Msg msg
@@ -78,15 +95,18 @@ viewportToSize { viewport } =
     }
 
 
-toInit : ( model, Cmd msg ) -> ( Model model, Cmd (Msg msg) )
+toInit : ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
 toInit ( model, cmd ) =
-    ( { updates = Zl.singleton ( "Init", model )
+    ( { updates = Zl.singleton ( Nothing, model )
       , position = { left = 10000, top = 10000 }
       , viewportSize = { width = 0, height = 0 }
       , isExpanded = False
       , isDragging = False
       , isHovering = False
       , isModelOverlayed = False
+      , tab = Updates
+      , importText = ""
+      , importError = Nothing
       }
     , Cmd.batch
         [ Cmd.map Update cmd
@@ -121,20 +141,20 @@ viewModelOverlay viewModel isModelOverlayed size model =
         H.text ""
 
 
-toHtml : (model -> String) -> (model -> Html msg) -> Model model -> Html (Msg msg)
-toHtml printModel view model =
+toHtml : (model -> String) -> (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> (model -> Html msg) -> Model model msg -> Html (Msg msg)
+toHtml printModel printMsg msgButtons exportJson view model =
     H.div []
-        [ viewDebugger model
+        [ viewDebugger printMsg msgButtons exportJson model
         , viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
         , H.map Update (view (Tuple.second model.updates.current))
         ]
 
 
-toDocument : (model -> String) -> (model -> Browser.Document msg) -> Model model -> Browser.Document (Msg msg)
-toDocument printModel view model =
+toDocument : (model -> String) -> (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> (model -> Browser.Document msg) -> Model model msg -> Browser.Document (Msg msg)
+toDocument printModel printMsg msgButtons exportJson view model =
     { title = "Debug"
     , body =
-        viewDebugger model
+        viewDebugger printMsg msgButtons exportJson model
             :: viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
             :: List.map (H.map Update) (.body (view (Tuple.second model.updates.current)))
     }
@@ -155,8 +175,18 @@ updatePosition isExpanded { height, width } { top, left } =
     }
 
 
-toUpdate : (msg -> String) -> (msg -> model -> ( model, Cmd msg )) -> Msg msg -> Model model -> ( Model model, Cmd (Msg msg) )
-toUpdate printMsg update msg model =
+msgToCmd : msg -> Cmd msg
+msgToCmd msg =
+    Task.perform identity (Task.succeed msg)
+
+
+msgToCmdAfter : Float -> msg -> Cmd msg
+msgToCmdAfter delay msg =
+    Task.perform identity (Task.andThen (\_ -> Task.succeed msg) (P.sleep delay))
+
+
+toUpdate : Jd.Decoder msg -> (msg -> model -> ( model, Cmd msg )) -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
+toUpdate importJson update msg model =
     case msg of
         Update updateMsg ->
             let
@@ -164,7 +194,7 @@ toUpdate printMsg update msg model =
                     update updateMsg (Tuple.second model.updates.current)
 
                 updates =
-                    Zl.dropHeads (Zl.insert ( printMsg updateMsg, newModel ) model.updates)
+                    Zl.dropHeads (Zl.insert ( Just updateMsg, newModel ) model.updates)
             in
             ( { model | updates = updates }
             , Cmd.map Update cmd
@@ -179,7 +209,7 @@ toUpdate printMsg update msg model =
                 , isExpanded = True
               }
             , if model.isModelOverlayed == False then
-                Task.perform identity (Task.succeed Dismiss)
+                msgToCmd Dismiss
 
               else
                 Cmd.none
@@ -204,7 +234,15 @@ toUpdate printMsg update msg model =
             ( { model
                 | viewportSize = viewportSize
               }
-            , Task.perform identity (Task.andThen (\_ -> Task.succeed Dismiss) (P.sleep 100))
+            , msgToCmdAfter 100 Dismiss
+            )
+
+        InputUpdates importText ->
+            ( { model
+                | importText = importText
+                , importError = Nothing
+              }
+            , Cmd.none
             )
 
         DragTo position ->
@@ -234,8 +272,38 @@ toUpdate printMsg update msg model =
         DoNothing ->
             ( model, Cmd.none )
 
+        OpenTab tab ->
+            ( { model | tab = tab }, Cmd.none )
 
-toSubscriptions : (model -> Sub msg) -> Model model -> Sub (Msg msg)
+        ImportUpdates ->
+            case Jd.decodeString (Jd.list importJson) model.importText of
+                Ok msgs ->
+                    ( { model
+                        | updates = Zl.singleton (Zl.toTail model.updates).current
+                        , importError = Nothing
+                        , tab = Updates
+                      }
+                    , msgToCmd (BatchMessages msgs)
+                    )
+
+                Err err ->
+                    ( { model | importError = Just err }, Cmd.none )
+
+        BatchMessages msgs ->
+            case msgs of
+                head :: tails ->
+                    ( model
+                    , Cmd.batch
+                        [ msgToCmd (Update head)
+                        , msgToCmd (BatchMessages tails)
+                        ]
+                    )
+
+                [] ->
+                    ( model, Cmd.none )
+
+
+toSubscriptions : (model -> Sub msg) -> Model model msg -> Sub (Msg msg)
 toSubscriptions subscriptions model =
     Sub.batch
         [ Sub.map Update (subscriptions (Tuple.second model.updates.current))
@@ -348,11 +416,11 @@ viewSlider length currentIndex =
         ]
 
 
-viewMessages : List ( Int, String ) -> Int -> Html (Msg msg)
-viewMessages messages currentIndex =
+viewUpdates : List ( Int, String ) -> Int -> Html (Msg msg)
+viewUpdates updates currentIndex =
     unselectable
         []
-        (List.indexedMap (viewMessage currentIndex) messages)
+        (List.indexedMap (viewUpdate currentIndex) updates)
 
 
 fitText : Int -> String -> String
@@ -364,8 +432,8 @@ fitText maxLength text =
         text
 
 
-viewMessage : Int -> Int -> ( Int, String ) -> Html (Msg msg)
-viewMessage currentIndex viewIndex ( index, label ) =
+viewUpdate : Int -> Int -> ( Int, String ) -> Html (Msg msg)
+viewUpdate currentIndex viewIndex ( index, label ) =
     H.div
         ([ useIf (viewIndex /= 0) (Ha.style "border-top" ("1px solid " ++ gray))
          , Ha.style "padding" "0px 4px"
@@ -443,7 +511,7 @@ viewModelOverlayToggleButton label isSelected =
     unselectable
         [ Ha.style "display" "inline-block"
         , Ha.style "text-align" "center"
-        , Ha.style "width" "50%"
+        , Ha.style "width" "20%"
         , Ha.style "color" (toSelectedColor isSelected)
         , Ha.style "background-color" (toSelectedBackgroundColor isSelected)
         , useIf (not isSelected) (He.onClick ToggleModelOverlay)
@@ -463,8 +531,75 @@ viewModelOverlayToggle isModelOverlayed =
         ]
 
 
-viewDebugger : Model model -> Html (Msg msg)
-viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSize, isModelOverlayed } =
+tabToString : Tab -> String
+tabToString tab =
+    case tab of
+        Updates ->
+            "Updates"
+
+        Messages ->
+            "Messages"
+
+        Import ->
+            "Import"
+
+        Export ->
+            "Export"
+
+
+viewTabs : Tab -> List Tab -> Html (Msg msg)
+viewTabs currentTab tabs =
+    H.div [] (List.map (viewTab currentTab) tabs)
+
+
+viewTab : Tab -> Tab -> Html (Msg msg)
+viewTab currentTab tab =
+    H.div
+        [ Ha.disabled (currentTab == tab)
+        , He.onClick (OpenTab tab)
+        ]
+        [ H.text (tabToString tab)
+        ]
+
+
+viewMessages : List ( String, List msg ) -> Html (Msg msg)
+viewMessages msgButtons =
+    H.div [] (List.map viewMessage msgButtons)
+
+
+viewMessage : ( String, List msg ) -> Html (Msg msg)
+viewMessage ( label, msgs ) =
+    H.div
+        [ He.onClick (BatchMessages msgs)
+        ]
+        [ H.text label ]
+
+
+viewImport : String -> Maybe Jd.Error -> Html (Msg msg)
+viewImport text error =
+    H.div
+        [ useMaybe error (Ha.title << Jd.errorToString)
+        , useMaybe error (always (Ha.style "border" "1px solid red"))
+        ]
+        [ H.textarea
+            [ He.onInput InputUpdates
+            ]
+            []
+        , H.div
+            [ He.onClick ImportUpdates
+            ]
+            [ H.text "Import"
+            ]
+        ]
+
+
+viewExport : String -> Html (Msg msg)
+viewExport text =
+    H.div [] [ H.text text ]
+
+
+viewDebugger : (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> Model model msg -> Html (Msg msg)
+viewDebugger printMsg msgButtons exportJson { updates, position, isExpanded, isDragging, isHovering, viewportSize, isModelOverlayed, importText, importError, tab } =
     H.div
         ([ Ha.style "position" "fixed"
          , Ha.style "overflow" "hidden"
@@ -510,7 +645,25 @@ viewDebugger { updates, position, isExpanded, isDragging, isHovering, viewportSi
                 ]
             , viewSlider (Zl.length updates) (List.length updates.tails)
             , viewModelOverlayToggle isModelOverlayed
-            , viewMessages (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( label, _ ) -> ( index, label )) updates))) (List.length updates.tails)
+            , viewTabs
+                tab
+                [ Updates
+                , Messages
+                , Import
+                , Export
+                ]
+            , case tab of
+                Updates ->
+                    viewUpdates (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMsg msg) )) updates))) (List.length updates.tails)
+
+                Messages ->
+                    viewMessages msgButtons
+
+                Import ->
+                    viewImport importText importError
+
+                Export ->
+                    viewExport (Je.encode 0 (Je.list exportJson (List.filterMap Tuple.first (Zl.toList updates))))
             ]
 
          else
