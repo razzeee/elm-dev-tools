@@ -106,37 +106,38 @@ view model =
                 ]
 
 
-encodeMsg msg =
-    case msg of
-        NameInput text ->
-            Encode.object [ ( "NameInput", Encode.string text ) ]
+debug =
+    { msgToString = Debug.toString
+    , modelToString = Debug.toString
+    , msgDecoder =
+        Decode.oneOf
+            [ Decode.field "NameInput" (Decode.map NameInput Decode.string)
+            , Decode.field "PassInput" (Decode.map PassInput Decode.string)
+            , Decode.field "CountInput" (Decode.map CountInput Decode.int)
+            , Decode.field "LogIn" (Decode.null LogIn)
+            , Decode.field "LogOut" (Decode.null LogOut)
+            ]
+    , encodeMsg =
+        \msg ->
+            case msg of
+                NameInput text ->
+                    Encode.object [ ( "NameInput", Encode.string text ) ]
 
-        PassInput text ->
-            Encode.object [ ( "PassInput", Encode.string text ) ]
+                PassInput text ->
+                    Encode.object [ ( "PassInput", Encode.string text ) ]
 
-        CountInput count ->
-            Encode.object [ ( "CountInput", Encode.int count ) ]
+                CountInput count ->
+                    Encode.object [ ( "CountInput", Encode.int count ) ]
 
-        LogIn ->
-            Encode.object [ ( "LogIn", Encode.null ) ]
+                LogIn ->
+                    Encode.object [ ( "LogIn", Encode.null ) ]
 
-        LogOut ->
-            Encode.object [ ( "LogOut", Encode.null ) ]
-
-
-msgDecoder =
-    Decode.oneOf
-        [ Decode.field "NameInput" (Decode.map NameInput Decode.string)
-        , Decode.field "PassInput" (Decode.map PassInput Decode.string)
-        , Decode.field "CountInput" (Decode.map CountInput Decode.int)
-        , Decode.field "LogIn" (Decode.null LogIn)
-        , Decode.field "LogOut" (Decode.null LogOut)
+                LogOut ->
+                    Encode.object [ ( "LogOut", Encode.null ) ]
+    , labelMsgsPairs =
+        [ ( "to count", [ NameInput "someone", LogIn, CountInput 1337 ] )
         ]
-
-
-msgButtons =
-    [ ( "to count", [ NameInput "someone", LogIn, CountInput 1337 ] )
-    ]
+    }
 
 
 main =
@@ -144,11 +145,5 @@ main =
         { init = init
         , update = update
         , view = view
-        , debug =
-            { printMsg = Debug.toString
-            , printModel = Debug.toString
-            , importJson = msgDecoder
-            , exportJson = encodeMsg
-            , msgButtons = msgButtons
-            }
+        , debug = debug
         }

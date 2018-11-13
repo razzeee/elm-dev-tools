@@ -16,10 +16,23 @@ sandbox :
     -> Debug.Internals.Program () model msg
 sandbox { init, view, update, debug } =
     Browser.document
-        { init = \_ -> Debug.Internals.toInit ( init, Cmd.none )
-        , view = Debug.Internals.toDocument debug.printModel debug.printMsg debug.msgButtons debug.exportJson (\model -> { title = "Debug", body = view model :: [] })
-        , update = \msg model -> Debug.Internals.toUpdate debug.importJson (\msgA modelA -> ( update msgA modelA, Cmd.none )) msg model
-        , subscriptions = Debug.Internals.toSubscriptions (\_ -> Sub.none)
+        { init =
+            always (Debug.Internals.toInit ( init, Cmd.none ))
+        , view =
+            Debug.Internals.toDocument
+                { modelToString = debug.modelToString
+                , msgToString = debug.msgToString
+                , labelMsgsPairs = debug.labelMsgsPairs
+                , encodeMsg = debug.encodeMsg
+                , view = \model -> { title = "Debug", body = view model :: [] }
+                }
+        , update =
+            Debug.Internals.toUpdate
+                { msgDecoder = debug.msgDecoder
+                , update = \msg model -> ( update msg model, Cmd.none )
+                }
+        , subscriptions =
+            Debug.Internals.toSubscriptions (always Sub.none)
         }
 
 
@@ -33,10 +46,23 @@ element :
     -> Debug.Internals.Program flags model msg
 element { init, view, update, subscriptions, debug } =
     Browser.element
-        { init = \flags -> Debug.Internals.toInit (init flags)
-        , view = Debug.Internals.toHtml debug.printModel debug.printMsg debug.msgButtons debug.exportJson view
-        , update = Debug.Internals.toUpdate debug.importJson update
-        , subscriptions = Debug.Internals.toSubscriptions subscriptions
+        { init =
+            Debug.Internals.toInit << init
+        , view =
+            Debug.Internals.toHtml
+                { modelToString = debug.modelToString
+                , msgToString = debug.msgToString
+                , labelMsgsPairs = debug.labelMsgsPairs
+                , encodeMsg = debug.encodeMsg
+                , view = view
+                }
+        , update =
+            Debug.Internals.toUpdate
+                { msgDecoder = debug.msgDecoder
+                , update = update
+                }
+        , subscriptions =
+            Debug.Internals.toSubscriptions subscriptions
         }
 
 
@@ -50,10 +76,23 @@ document :
     -> Debug.Internals.Program flags model msg
 document { init, view, update, subscriptions, debug } =
     Browser.document
-        { init = \flags -> Debug.Internals.toInit (init flags)
-        , view = Debug.Internals.toDocument debug.printModel debug.printMsg debug.msgButtons debug.exportJson view
-        , update = Debug.Internals.toUpdate debug.importJson update
-        , subscriptions = Debug.Internals.toSubscriptions subscriptions
+        { init =
+            Debug.Internals.toInit << init
+        , view =
+            Debug.Internals.toDocument
+                { modelToString = debug.modelToString
+                , msgToString = debug.msgToString
+                , labelMsgsPairs = debug.labelMsgsPairs
+                , encodeMsg = debug.encodeMsg
+                , view = view
+                }
+        , update =
+            Debug.Internals.toUpdate
+                { msgDecoder = debug.msgDecoder
+                , update = update
+                }
+        , subscriptions =
+            Debug.Internals.toSubscriptions subscriptions
         }
 
 
@@ -69,10 +108,25 @@ application :
     -> Debug.Internals.Program flags model msg
 application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debug } =
     Browser.application
-        { init = \flags url key -> Debug.Internals.toInit (init flags url key)
-        , view = Debug.Internals.toDocument debug.printModel debug.printMsg debug.msgButtons debug.exportJson view
-        , update = Debug.Internals.toUpdate debug.importJson update
-        , subscriptions = Debug.Internals.toSubscriptions subscriptions
-        , onUrlChange = Debug.Internals.toMsg << onUrlChange
-        , onUrlRequest = Debug.Internals.toMsg << onUrlRequest
+        { init =
+            \flags url key -> Debug.Internals.toInit (init flags url key)
+        , view =
+            Debug.Internals.toDocument
+                { modelToString = debug.modelToString
+                , msgToString = debug.msgToString
+                , labelMsgsPairs = debug.labelMsgsPairs
+                , encodeMsg = debug.encodeMsg
+                , view = view
+                }
+        , update =
+            Debug.Internals.toUpdate
+                { msgDecoder = debug.msgDecoder
+                , update = update
+                }
+        , subscriptions =
+            Debug.Internals.toSubscriptions subscriptions
+        , onUrlChange =
+            Debug.Internals.toMsg << onUrlChange
+        , onUrlRequest =
+            Debug.Internals.toMsg << onUrlRequest
         }

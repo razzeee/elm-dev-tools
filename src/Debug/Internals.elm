@@ -16,11 +16,11 @@ import ZipList as Zl exposing (ZipList)
 
 
 type alias Configuration model msg =
-    { printModel : model -> String
-    , printMsg : msg -> String
-    , importJson : Jd.Decoder msg
-    , exportJson : msg -> Je.Value
-    , msgButtons : List ( String, List msg )
+    { modelToString : model -> String
+    , msgToString : msg -> String
+    , msgDecoder : Jd.Decoder msg
+    , encodeMsg : msg -> Je.Value
+    , labelMsgsPairs : List ( String, List msg )
     }
 
 
@@ -115,47 +115,30 @@ toInit ( model, cmd ) =
     )
 
 
-viewModelOverlay : (model -> String) -> Bool -> Size -> model -> Html (Msg msg)
-viewModelOverlay viewModel isModelOverlayed size model =
-    if isModelOverlayed then
-        H.div
-            [ Ha.style "position" "fixed"
-            , Ha.style "height" "100vh"
-            , Ha.style "width" "100vw"
-            , Ha.style "background-color" "rgba(255,255,255,.8)"
-            , Ha.style "color" "black"
-            , Ha.style "z-index" "2147483646"
-            , Ha.style "top" "0"
-            , Ha.style "left" "0"
-            , Ha.style "height" (toPx size.height)
-            , Ha.style "width" (toPx size.width)
-            , Ha.style "padding" "5vw"
-            ]
-            [ H.div
-                []
-                [ H.text (viewModel model)
-                ]
-            ]
-
-    else
-        H.text ""
+type alias ViewConfiguration model msg view =
+    { modelToString : model -> String
+    , msgToString : msg -> String
+    , labelMsgsPairs : List ( String, List msg )
+    , encodeMsg : msg -> Je.Value
+    , view : model -> view
+    }
 
 
-toHtml : (model -> String) -> (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> (model -> Html msg) -> Model model msg -> Html (Msg msg)
-toHtml printModel printMsg msgButtons exportJson view model =
+toHtml : ViewConfiguration model msg (Html msg) -> Model model msg -> Html (Msg msg)
+toHtml { modelToString, msgToString, labelMsgsPairs, encodeMsg, view } model =
     H.div []
-        [ viewDebugger printMsg msgButtons exportJson model
-        , viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+        [ viewDebugger msgToString labelMsgsPairs encodeMsg model
+        , viewModelOverlay modelToString model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
         , H.map Update (view (Tuple.second model.updates.current))
         ]
 
 
-toDocument : (model -> String) -> (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> (model -> Browser.Document msg) -> Model model msg -> Browser.Document (Msg msg)
-toDocument printModel printMsg msgButtons exportJson view model =
+toDocument : ViewConfiguration model msg (Browser.Document msg) -> Model model msg -> Browser.Document (Msg msg)
+toDocument { modelToString, msgToString, labelMsgsPairs, encodeMsg, view } model =
     { title = "Debug"
     , body =
-        viewDebugger printMsg msgButtons exportJson model
-            :: viewModelOverlay printModel model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
+        viewDebugger msgToString labelMsgsPairs encodeMsg model
+            :: viewModelOverlay modelToString model.isModelOverlayed model.viewportSize (Tuple.second model.updates.current)
             :: List.map (H.map Update) (.body (view (Tuple.second model.updates.current)))
     }
 
@@ -185,8 +168,14 @@ msgToCmdAfter delay msg =
     Task.perform identity (Task.andThen (\_ -> Task.succeed msg) (P.sleep delay))
 
 
-toUpdate : Jd.Decoder msg -> (msg -> model -> ( model, Cmd msg )) -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
-toUpdate importJson update msg model =
+type alias UpdateConfiguration model msg =
+    { msgDecoder : Jd.Decoder msg
+    , update : msg -> model -> ( model, Cmd msg )
+    }
+
+
+toUpdate : UpdateConfiguration model msg -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
+toUpdate { msgDecoder, update } msg model =
     case msg of
         Update updateMsg ->
             let
@@ -276,7 +265,7 @@ toUpdate importJson update msg model =
             ( { model | tab = tab }, Cmd.none )
 
         ImportUpdates ->
-            case Jd.decodeString (Jd.list importJson) model.importText of
+            case Jd.decodeString (Jd.list msgDecoder) model.importText of
                 Ok msgs ->
                     ( { model
                         | updates = Zl.singleton (Zl.toTail model.updates).current
@@ -346,15 +335,6 @@ unselectable attributes =
 toPx : Int -> String
 toPx n =
     String.fromInt n ++ "px"
-
-
-toBoxShadow : Bool -> String
-toBoxShadow isHovering =
-    if isHovering then
-        gray ++ " 0px 0px 8px 2px"
-
-    else
-        gray ++ " 0px 0px 8px 1px"
 
 
 toBorderRadius : Bool -> String
@@ -563,14 +543,14 @@ viewTab currentTab tab =
 
 
 viewMessages : List ( String, List msg ) -> Html (Msg msg)
-viewMessages msgButtons =
-    H.div [] (List.map viewMessage msgButtons)
+viewMessages labelMsgsPairs =
+    H.div [] (List.map viewMessage labelMsgsPairs)
 
 
 viewMessage : ( String, List msg ) -> Html (Msg msg)
-viewMessage ( label, msgs ) =
+viewMessage ( label, labelMsgsPairs ) =
     H.div
-        [ He.onClick (BatchMessages msgs)
+        [ He.onClick (BatchMessages labelMsgsPairs)
         ]
         [ H.text label ]
 
@@ -598,14 +578,41 @@ viewExport text =
     H.div [] [ H.text text ]
 
 
+viewModelOverlay : (model -> String) -> Bool -> Size -> model -> Html (Msg msg)
+viewModelOverlay viewModel isModelOverlayed size model =
+    if isModelOverlayed then
+        H.div
+            [ Ha.style "position" "fixed"
+            , Ha.style "height" "100vh"
+            , Ha.style "width" "100vw"
+            , Ha.style "background-color" "rgba(255,255,255,.8)"
+            , Ha.style "color" "black"
+            , Ha.style "z-index" "2147483646"
+            , Ha.style "top" "0"
+            , Ha.style "left" "0"
+            , Ha.style "height" (toPx size.height)
+            , Ha.style "width" (toPx size.width)
+            , Ha.style "padding" "5vw"
+            ]
+            [ H.div
+                []
+                [ H.text (viewModel model)
+                ]
+            ]
+
+    else
+        H.text ""
+
+
 viewDebugger : (msg -> String) -> List ( String, List msg ) -> (msg -> Je.Value) -> Model model msg -> Html (Msg msg)
-viewDebugger printMsg msgButtons exportJson { updates, position, isExpanded, isDragging, isHovering, viewportSize, isModelOverlayed, importText, importError, tab } =
+viewDebugger msgToString labelMsgsPairs encodeMsg { updates, position, isExpanded, isDragging, isHovering, viewportSize, isModelOverlayed, importText, importError, tab } =
     H.div
         ([ Ha.style "position" "fixed"
          , Ha.style "overflow" "hidden"
          , Ha.style "font-family" "system-ui"
          , Ha.style "background-color" "white"
          , Ha.style "z-index" "2147483647"
+         , Ha.style "border" "1px solid lightgray"
          , Ha.style "transition" <|
             joinStrings ", "
                 [ "box-shadow 70ms linear"
@@ -618,7 +625,6 @@ viewDebugger printMsg msgButtons exportJson { updates, position, isExpanded, isD
                 ]
          , Ha.style "width" (toPx (toWidth isExpanded))
          , Ha.style "border-radius" (toBorderRadius isExpanded)
-         , Ha.style "box-shadow" (toBoxShadow isHovering)
          , Ha.style "left" (toPx position.left)
          , Ha.style "top" (toPx position.top)
          , He.onMouseEnter (SetHovering True)
@@ -654,16 +660,16 @@ viewDebugger printMsg msgButtons exportJson { updates, position, isExpanded, isD
                 ]
             , case tab of
                 Updates ->
-                    viewUpdates (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMsg msg) )) updates))) (List.length updates.tails)
+                    viewUpdates (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map msgToString msg) )) updates))) (List.length updates.tails)
 
                 Messages ->
-                    viewMessages msgButtons
+                    viewMessages labelMsgsPairs
 
                 Import ->
                     viewImport importText importError
 
                 Export ->
-                    viewExport (Je.encode 0 (Je.list exportJson (List.filterMap Tuple.first (updates.current :: updates.tails))))
+                    viewExport (Je.encode 0 (Je.list encodeMsg (List.filterMap Tuple.first (updates.current :: updates.tails))))
             ]
 
          else
