@@ -55,7 +55,7 @@ type HoverTarget
     | UpdateSlider
     | NavigationItem Int
     | UpdateItem Int
-    | CommandItem Int
+    | LabelMsgsPairItem Int
     | NoHover
 
 
@@ -392,7 +392,17 @@ viewUpdate target currentIndex ( index, label ) =
 
 viewLabelMsgsPair : HoverTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
 viewLabelMsgsPair target index ( label, msgs ) =
-    H.div []
+    H.button
+        [ Ha.style "width" "159px"
+        , Ha.style "margin" "4px"
+        , Ha.style "line-height" "18px"
+        , Ha.style "font-size" "9px"
+        , Ha.style "font-weight" "500"
+        , Ha.style "background-color" (U.toListBackgroundColor False (target == LabelMsgsPairItem index) False)
+        , He.onMouseOver (HoverElement (LabelMsgsPairItem index))
+        , He.onMouseOut (HoverElement NoHover)
+        , He.onClick (BatchMessages msgs)
+        ]
         [ H.text label
         ]
 
@@ -402,6 +412,14 @@ viewPage currentIndex target msgToString layoutSize page updates labelMsgsPairs 
     H.div
         [ Ha.style "height" (U.toPx (layoutSize.height - 38))
         , Ha.style "border-bottom" U.border
+        , Ha.style "overflow"
+            (case page of
+                LabelMsgsPairs ->
+                    "hidden scroll"
+
+                Updates ->
+                    "hidden"
+            )
         ]
     <|
         case page of
