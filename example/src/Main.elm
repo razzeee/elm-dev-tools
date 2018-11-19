@@ -135,7 +135,7 @@ debug =
                 LogOut ->
                     Encode.object [ ( "LogOut", Encode.null ) ]
     , labelMsgsPairs =
-        [ ( "to count", [ NameInput "someone", LogIn, CountInput 1337 ] )
+        [ ( "To Count", [ NameInput "someone", LogIn, CountInput 1337 ] )
         ]
     }
 
