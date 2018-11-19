@@ -107,9 +107,9 @@ view model =
 
 
 debug =
-    { msgToString = Debug.toString
-    , modelToString = Debug.toString
-    , msgDecoder =
+    { printMessage = Debug.toString
+    , printModel = Debug.toString
+    , messageDecoder =
         Decode.oneOf
             [ Decode.field "NameInput" (Decode.map NameInput Decode.string)
             , Decode.field "PassInput" (Decode.map PassInput Decode.string)
@@ -117,7 +117,7 @@ debug =
             , Decode.field "LogIn" (Decode.null LogIn)
             , Decode.field "LogOut" (Decode.null LogOut)
             ]
-    , encodeMsg =
+    , encodeMessage =
         \msg ->
             case msg of
                 NameInput text ->
@@ -134,7 +134,7 @@ debug =
 
                 LogOut ->
                     Encode.object [ ( "LogOut", Encode.null ) ]
-    , labelMsgsPairs =
+    , commands =
         [ ( "To Count", [ NameInput "someone", LogIn, CountInput 1337 ] )
         ]
     }

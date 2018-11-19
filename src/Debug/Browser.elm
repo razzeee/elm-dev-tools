@@ -51,15 +51,15 @@ sandbox { init, view, update, debug } =
             always (Debug.Main.toInit ( init, Cmd.none ))
         , view =
             Debug.Main.toDocument
-                { modelToString = debug.modelToString
-                , msgToString = debug.msgToString
-                , labelMsgsPairs = debug.labelMsgsPairs
+                { printModel = debug.printModel
+                , printMessage = debug.printMessage
+                , commands = debug.commands
                 , view = \model -> { title = "Debug", body = view model :: [] }
                 }
         , update =
             Debug.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { messageDecoder = debug.messageDecoder
+                , encodeMessage = debug.encodeMessage
                 , update = \msg model -> ( update msg model, Cmd.none )
                 }
         , subscriptions = Debug.Main.toSubscriptions (always Sub.none)
@@ -72,15 +72,15 @@ element { init, view, update, subscriptions, debug } =
         { init = Debug.Main.toInit << init
         , view =
             Debug.Main.toHtml
-                { modelToString = debug.modelToString
-                , msgToString = debug.msgToString
-                , labelMsgsPairs = debug.labelMsgsPairs
+                { printModel = debug.printModel
+                , printMessage = debug.printMessage
+                , commands = debug.commands
                 , view = view
                 }
         , update =
             Debug.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { messageDecoder = debug.messageDecoder
+                , encodeMessage = debug.encodeMessage
                 , update = update
                 }
         , subscriptions = Debug.Main.toSubscriptions subscriptions
@@ -93,15 +93,15 @@ document { init, view, update, subscriptions, debug } =
         { init = Debug.Main.toInit << init
         , view =
             Debug.Main.toDocument
-                { modelToString = debug.modelToString
-                , msgToString = debug.msgToString
-                , labelMsgsPairs = debug.labelMsgsPairs
+                { printModel = debug.printModel
+                , printMessage = debug.printMessage
+                , commands = debug.commands
                 , view = view
                 }
         , update =
             Debug.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { messageDecoder = debug.messageDecoder
+                , encodeMessage = debug.encodeMessage
                 , update = update
                 }
         , subscriptions = Debug.Main.toSubscriptions subscriptions
@@ -114,15 +114,15 @@ application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debu
         { init = \flags url key -> Debug.Main.toInit (init flags url key)
         , view =
             Debug.Main.toDocument
-                { modelToString = debug.modelToString
-                , msgToString = debug.msgToString
-                , labelMsgsPairs = debug.labelMsgsPairs
+                { printModel = debug.printModel
+                , printMessage = debug.printMessage
+                , commands = debug.commands
                 , view = view
                 }
         , update =
             Debug.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { messageDecoder = debug.messageDecoder
+                , encodeMessage = debug.encodeMessage
                 , update = update
                 }
         , subscriptions = Debug.Main.toSubscriptions subscriptions

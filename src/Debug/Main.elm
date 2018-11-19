@@ -26,26 +26,26 @@ import ZipList as Zl exposing (ZipList)
 
 
 type alias Config model msg =
-    { msgToString : msg -> String
-    , modelToString : model -> String
-    , msgDecoder : Jd.Decoder msg
-    , encodeMsg : msg -> Je.Value
-    , labelMsgsPairs : List ( String, List msg )
+    { printMessage : msg -> String
+    , printModel : model -> String
+    , messageDecoder : Jd.Decoder msg
+    , encodeMessage : msg -> Je.Value
+    , commands : List ( String, List msg )
     }
 
 
 type Page
-    = LabelMsgsPairs
+    = Commands
     | Updates
 
 
 type DragEvent
     = Start
     | To Position
-    | NoDrag
+    | Stop
 
 
-type HoverTarget
+type EventTarget
     = ModelButton
     | DragButton
     | DismissButton
@@ -53,36 +53,34 @@ type HoverTarget
     | ImportButton
     | ExportButton
     | UpdateSlider
-    | NavigationItem Int
-    | UpdateItem Int
-    | LabelMsgsPairItem Int
-    | NoHover
+    | NavigationButtonAt Int
+    | UpdateButtonAt Int
+    | CommandButtonAt Int
+    | None
 
 
 type alias Model model msg =
     { updates : ZipList ( Maybe msg, model )
+    , importError : Maybe Jd.Error
     , viewportSize : Size
     , position : Position
     , layout : Layout
     , page : Page
-    , drag : Bool
-    , hover : HoverTarget
-    , overlayModel : Bool
-    , importError : Maybe Jd.Error
+    , hover : EventTarget
+    , isDragging : Bool
+    , isModelOverlayed : Bool
     }
 
 
 type Msg msg
-    = UpdateModel msg
-    | SelectUpdate Int
+    = UpdateWith msg
+    | SelectUpdateAt Int
     | SelectPage Page
     | ToggleLayout
-    | ToggleModel
-    | StartDrag
-    | DragTo Position
-    | StopDrag
-    | HoverElement HoverTarget
-    | ViewportResized Size
+    | ToggleModelOverlay
+    | Drag DragEvent
+    | Hover EventTarget
+    | ResizeViewport Size
     | SelectFile
     | FileSelected File
     | ImportUpdates String
@@ -97,16 +95,16 @@ type alias Program flags model msg =
 
 
 type alias ViewConfig model msg view =
-    { modelToString : model -> String
-    , msgToString : msg -> String
-    , labelMsgsPairs : List ( String, List msg )
+    { printModel : model -> String
+    , printMessage : msg -> String
+    , commands : List ( String, List msg )
     , view : model -> view
     }
 
 
 type alias UpdateConfig model msg =
-    { msgDecoder : Jd.Decoder msg
-    , encodeMsg : msg -> Je.Value
+    { messageDecoder : Jd.Decoder msg
+    , encodeMessage : msg -> Je.Value
     , update : msg -> model -> ( model, Cmd msg )
     }
 
@@ -123,7 +121,7 @@ doNothing =
 
 toMsg : msg -> Msg msg
 toMsg =
-    UpdateModel
+    UpdateWith
 
 
 toggleLayout : Layout -> Layout
@@ -136,32 +134,38 @@ toggleLayout layout =
             Collapsed
 
 
-pageTitle : Page -> String
-pageTitle page =
+pageToString : Page -> String
+pageToString page =
     case page of
-        LabelMsgsPairs ->
+        Commands ->
             "Commands"
 
         Updates ->
             "Updates"
 
 
-toCursorStyle : Bool -> HoverTarget -> H.Attribute msg
-toCursorStyle drag target =
-    Ha.style "cursor" <|
-        if drag then
-            "grabbing"
+toCursorStyle : Bool -> EventTarget -> H.Attribute msg
+toCursorStyle isDragging target =
+    let
+        cursor =
+            if isDragging then
+                "grabbing"
 
-        else
-            case target of
-                NoHover ->
-                    "initial"
+            else
+                case target of
+                    None ->
+                        "unset"
 
-                DragButton ->
-                    "grab"
+                    DragButton ->
+                        "grab"
 
-                _ ->
-                    "pointer"
+                    UpdateSlider ->
+                        "grab"
+
+                    _ ->
+                        "pointer"
+    in
+    Ha.style "cursor" cursor
 
 
 layoutToSize : Layout -> Size
@@ -175,9 +179,9 @@ layoutToSize layout =
 
 
 updatePosition : Size -> Size -> Position -> Position
-updatePosition { height, width } viewport { top, left } =
-    { top = clamp 0 (viewport.height - height) top
-    , left = clamp 0 (viewport.width - width) left
+updatePosition debugSize viewportSize debugPosition =
+    { top = clamp 0 (viewportSize.height - debugSize.height) debugPosition.top
+    , left = clamp 0 (viewportSize.width - debugSize.width) debugPosition.left
     }
 
 
@@ -193,23 +197,22 @@ viewDivider =
 viewMaterialIconsSvg : List (S.Attribute (Msg msg)) -> List (Svg (Msg msg)) -> Html (Msg msg)
 viewMaterialIconsSvg attributes =
     S.svg
-        ([ Sa.width "15"
-         , Sa.height "15"
-         , Sa.viewBox "0 0 24 24"
-         ]
-            ++ attributes
+        (Sa.width "15"
+            :: Sa.height "15"
+            :: Sa.viewBox "0 0 24 24"
+            :: attributes
         )
 
 
-viewDragButton : HoverTarget -> Bool -> Html (Msg msg)
-viewDragButton target drag =
+viewDragButton : EventTarget -> Bool -> Html (Msg msg)
+viewDragButton target isDragging =
     viewMaterialIconsSvg
-        [ Se.onMouseDown StartDrag
-        , Se.onMouseOver (HoverElement DragButton)
-        , Se.onMouseOut (HoverElement NoHover)
+        [ Se.onMouseDown (Drag Start)
+        , Se.onMouseOver (Hover DragButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
-            [ Sa.fill (U.toIconColor (target == DragButton) drag)
+            [ Sa.fill (U.toIconColor (target == DragButton) isDragging)
             , Sa.d "M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z"
             ]
             []
@@ -217,12 +220,12 @@ viewDragButton target drag =
         ]
 
 
-viewDismissButton : HoverTarget -> Size -> Position -> Html (Msg msg)
+viewDismissButton : EventTarget -> Size -> Position -> Html (Msg msg)
 viewDismissButton target { height, width } { top, left } =
     viewMaterialIconsSvg
         [ Se.onClick Dismiss
-        , Se.onMouseOver (HoverElement DismissButton)
-        , Se.onMouseOut (HoverElement NoHover)
+        , Se.onMouseOver (Hover DismissButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.d "M5,17.59L15.59,7H9V5H19V15H17V8.41L6.41,19L5,17.59Z"
@@ -233,12 +236,12 @@ viewDismissButton target { height, width } { top, left } =
         ]
 
 
-viewImportButton : HoverTarget -> Html (Msg msg)
+viewImportButton : EventTarget -> Html (Msg msg)
 viewImportButton target =
     viewMaterialIconsSvg
         [ Se.onClick SelectFile
-        , Se.onMouseOver (HoverElement ImportButton)
-        , Se.onMouseOut (HoverElement NoHover)
+        , Se.onMouseOver (Hover ImportButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.d "M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13.5,16V19H10.5V16H8L12,12L16,16H13.5M13,9V3.5L18.5,9H13Z"
@@ -249,12 +252,12 @@ viewImportButton target =
         ]
 
 
-viewExportButton : HoverTarget -> Html (Msg msg)
+viewExportButton : EventTarget -> Html (Msg msg)
 viewExportButton target =
     viewMaterialIconsSvg
         [ Se.onClick ExportUpdates
-        , Se.onMouseOver (HoverElement ExportButton)
-        , Se.onMouseOut (HoverElement NoHover)
+        , Se.onMouseOver (Hover ExportButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.d "M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M18,20V9H13V4H6V20H18M12,19L8,15H10.5V12H13.5V15H16L12,19Z"
@@ -265,7 +268,7 @@ viewExportButton target =
         ]
 
 
-viewModelButton : HoverTarget -> Bool -> Html (Msg msg)
+viewModelButton : EventTarget -> Bool -> Html (Msg msg)
 viewModelButton target modelOverlayed =
     let
         title =
@@ -275,14 +278,10 @@ viewModelButton target modelOverlayed =
             else
                 "Inspect the model"
     in
-    S.svg
-        [ Sa.width "12"
-        , Sa.height "12"
-        , Sa.style "padding: 1px 1px 2px 2px;"
-        , Sa.viewBox "0 0 24 24"
-        , Se.onClick ToggleModel
-        , Se.onMouseOver (HoverElement ModelButton)
-        , Se.onMouseOut (HoverElement NoHover)
+    viewMaterialIconsSvg
+        [ Se.onClick ToggleModelOverlay
+        , Se.onMouseOver (Hover ModelButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.d "M5,3H7V5H5V10A2,2 0 0,1 3,12A2,2 0 0,1 5,14V19H7V21H5C3.93,20.73 3,20.1 3,19V15A2,2 0 0,0 1,13H0V11H1A2,2 0 0,0 3,9V5A2,2 0 0,1 5,3M19,3A2,2 0 0,1 21,5V9A2,2 0 0,0 23,11H24V13H23A2,2 0 0,0 21,15V19A2,2 0 0,1 19,21H17V19H19V14A2,2 0 0,1 21,12A2,2 0 0,1 19,10V5H17V3H19M12,15A1,1 0 0,1 13,16A1,1 0 0,1 12,17A1,1 0 0,1 11,16A1,1 0 0,1 12,15M8,15A1,1 0 0,1 9,16A1,1 0 0,1 8,17A1,1 0 0,1 7,16A1,1 0 0,1 8,15M16,15A1,1 0 0,1 17,16A1,1 0 0,1 16,17A1,1 0 0,1 15,16A1,1 0 0,1 16,15Z"
@@ -293,7 +292,7 @@ viewModelButton target modelOverlayed =
         ]
 
 
-viewLayoutButton : HoverTarget -> Layout -> Html (Msg msg)
+viewLayoutButton : EventTarget -> Layout -> Html (Msg msg)
 viewLayoutButton target layout =
     let
         ( d, title ) =
@@ -310,8 +309,8 @@ viewLayoutButton target layout =
     in
     viewMaterialIconsSvg
         [ Se.onClick ToggleLayout
-        , Se.onMouseOver (HoverElement LayoutButton)
-        , Se.onMouseOut (HoverElement NoHover)
+        , Se.onMouseOver (Hover LayoutButton)
+        , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.fill (U.toIconColor (target == LayoutButton) False)
@@ -347,25 +346,28 @@ viewSlider length currentIndex =
         [ H.input
             [ Ha.style "margin" "0 5%"
             , Ha.style "width" "90%"
+            , Ha.style "height" "18px"
             , Ha.type_ "range"
             , Ha.min (String.fromInt 0)
             , Ha.disabled (length == 1)
             , Ha.max (String.fromInt (length - 1))
             , Ha.value (String.fromInt currentIndex)
-            , He.onInput (SelectUpdate << Maybe.withDefault 0 << String.toInt)
+            , He.onInput (SelectUpdateAt << Maybe.withDefault 0 << String.toInt)
+            , He.onMouseOver (Hover UpdateSlider)
+            , He.onMouseOut (Hover None)
             ]
             []
         ]
 
 
-viewUpdate : HoverTarget -> Int -> ( Int, String ) -> Html (Msg msg)
+viewUpdate : EventTarget -> Int -> ( Int, String ) -> Html (Msg msg)
 viewUpdate target currentIndex ( index, label ) =
     let
         isSelected =
             index == currentIndex
 
         isHovered =
-            target == UpdateItem index
+            target == UpdateButtonAt index
 
         isOdd =
             modBy 2 index == 1
@@ -377,9 +379,9 @@ viewUpdate target currentIndex ( index, label ) =
         , Ha.style "padding" "0 9px"
         , Ha.style "background-color" (U.toListBackgroundColor isOdd isHovered isSelected)
         , Ha.style "color" (U.toListTextColor isSelected)
-        , He.onClick (SelectUpdate index)
-        , He.onMouseOver (HoverElement (UpdateItem index))
-        , He.onMouseOut (HoverElement NoHover)
+        , He.onClick (SelectUpdateAt index)
+        , He.onMouseOver (Hover (UpdateButtonAt index))
+        , He.onMouseOut (Hover None)
         ]
         [ H.text (U.trim 24 label)
         , H.span
@@ -390,31 +392,33 @@ viewUpdate target currentIndex ( index, label ) =
         ]
 
 
-viewLabelMsgsPair : HoverTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
-viewLabelMsgsPair target index ( label, msgs ) =
-    H.button
+viewCommand : EventTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
+viewCommand target index ( label, msgs ) =
+    U.selectable False
         [ Ha.style "width" "159px"
-        , Ha.style "margin" "4px"
+        , Ha.style "margin" "3px"
         , Ha.style "line-height" "18px"
         , Ha.style "font-size" "9px"
         , Ha.style "font-weight" "500"
-        , Ha.style "background-color" (U.toListBackgroundColor False (target == LabelMsgsPairItem index) False)
-        , He.onMouseOver (HoverElement (LabelMsgsPairItem index))
-        , He.onMouseOut (HoverElement NoHover)
+        , Ha.style "text-align" "center"
+        , Ha.style "border" U.border
+        , Ha.style "background-color" (U.toListBackgroundColor False (target == CommandButtonAt index) False)
+        , He.onMouseOver (Hover (CommandButtonAt index))
+        , He.onMouseOut (Hover None)
         , He.onClick (BatchMessages msgs)
         ]
         [ H.text label
         ]
 
 
-viewPage : Int -> HoverTarget -> (msg -> String) -> Size -> Page -> List ( Int, String ) -> List ( String, List msg ) -> Html (Msg msg)
-viewPage currentIndex target msgToString layoutSize page updates labelMsgsPairs =
+viewPage : Int -> EventTarget -> (msg -> String) -> Size -> Page -> List ( Int, String ) -> List ( String, List msg ) -> Html (Msg msg)
+viewPage currentIndex target printMessage layoutSize page updates commands =
     H.div
         [ Ha.style "height" (U.toPx (layoutSize.height - 38))
         , Ha.style "border-bottom" U.border
         , Ha.style "overflow"
             (case page of
-                LabelMsgsPairs ->
+                Commands ->
                     "hidden scroll"
 
                 Updates ->
@@ -426,8 +430,8 @@ viewPage currentIndex target msgToString layoutSize page updates labelMsgsPairs 
             Updates ->
                 List.map (viewUpdate target currentIndex) updates
 
-            LabelMsgsPairs ->
-                List.indexedMap (viewLabelMsgsPair target) labelMsgsPairs
+            Commands ->
+                List.indexedMap (viewCommand target) commands
 
 
 viewControls : List (Html (Msg msg)) -> Html (Msg msg)
@@ -448,14 +452,14 @@ viewButtons =
         ]
 
 
-viewNavigationPage : Int -> Page -> Page -> HoverTarget -> Html (Msg msg)
+viewNavigationPage : Int -> Page -> Page -> EventTarget -> Html (Msg msg)
 viewNavigationPage index page modelPage target =
     let
         isSelected =
             page == modelPage
 
         isHovered =
-            target == NavigationItem index
+            target == NavigationButtonAt index
     in
     U.selectable False
         [ Ha.style "height" "18px"
@@ -464,16 +468,16 @@ viewNavigationPage index page modelPage target =
         , Ha.style "padding" "0 9px"
         , Ha.style "color" (U.toTextColor isHovered isSelected)
         , Ha.style "background-color" (U.toBackgroundColor isHovered isSelected)
-        , He.onMouseOver (HoverElement (NavigationItem index))
-        , He.onMouseOut (HoverElement NoHover)
+        , He.onMouseOver (Hover (NavigationButtonAt index))
+        , He.onMouseOut (Hover None)
         , He.onClick (SelectPage page)
         ]
-        [ H.text (pageTitle page)
+        [ H.text (pageToString page)
         ]
 
 
 viewDebug : (msg -> String) -> List ( String, List msg ) -> Model model msg -> Html (Msg msg)
-viewDebug msgToString labelMsgsPairs model =
+viewDebug printMessage commands model =
     let
         isExpanded =
             model.layout == Expanded
@@ -496,28 +500,28 @@ viewDebug msgToString labelMsgsPairs model =
         [ U.viewIf isExpanded <|
             viewControls <|
                 [ viewButtons
-                    [ viewModelButton model.hover model.overlayModel
+                    [ viewModelButton model.hover model.isModelOverlayed
                     , viewExportButton model.hover
                     , viewImportButton model.hover
                     ]
                 , viewDivider
                 , viewNavigationPage 0 Updates model.page model.hover
-                , viewNavigationPage 1 LabelMsgsPairs model.page model.hover
+                , viewNavigationPage 1 Commands model.page model.hover
                 ]
         , U.viewIf isExpanded <|
             viewPage
                 (List.length model.updates.tails)
                 model.hover
-                msgToString
+                printMessage
                 layoutSize
                 model.page
-                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map msgToString msg) )) model.updates)))
-                labelMsgsPairs
+                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg) )) model.updates)))
+                commands
         , viewControls
             [ viewSlider (Zl.length model.updates) (List.length model.updates.tails)
             , viewDivider
             , viewButtons
-                [ viewDragButton model.hover model.drag
+                [ viewDragButton model.hover model.isDragging
                 , viewDismissButton model.hover layoutSize model.position
                 , viewLayoutButton model.hover model.layout
                 ]
@@ -526,28 +530,28 @@ viewDebug msgToString labelMsgsPairs model =
 
 
 toDocument : ViewConfig model msg (Browser.Document msg) -> Model model msg -> Browser.Document (Msg msg)
-toDocument { modelToString, msgToString, labelMsgsPairs, view } model =
+toDocument { printModel, printMessage, commands, view } model =
     { title = "Debug"
     , body =
-        [ U.selectable (not model.drag)
-            [ toCursorStyle model.drag model.hover
+        [ U.selectable (not model.isDragging)
+            [ toCursorStyle model.isDragging model.hover
             ]
-            (viewDebug msgToString labelMsgsPairs model
-                :: U.viewIf model.overlayModel (viewOverlay model.viewportSize (modelToString (Tuple.second model.updates.current)))
-                :: List.map (H.map UpdateModel) (.body (view (Tuple.second model.updates.current)))
+            (viewDebug printMessage commands model
+                :: U.viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+                :: List.map (H.map UpdateWith) (.body (view (Tuple.second model.updates.current)))
             )
         ]
     }
 
 
 toHtml : ViewConfig model msg (Html msg) -> Model model msg -> Html (Msg msg)
-toHtml { modelToString, msgToString, labelMsgsPairs, view } model =
-    U.selectable (not model.drag)
-        [ toCursorStyle model.drag model.hover
+toHtml { printModel, printMessage, commands, view } model =
+    U.selectable (not model.isDragging)
+        [ toCursorStyle model.isDragging model.hover
         ]
-        [ viewDebug msgToString labelMsgsPairs model
-        , U.viewIf model.overlayModel (viewOverlay model.viewportSize (modelToString (Tuple.second model.updates.current)))
-        , H.map UpdateModel (view (Tuple.second model.updates.current))
+        [ viewDebug printMessage commands model
+        , U.viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+        , H.map UpdateWith (view (Tuple.second model.updates.current))
         ]
 
 
@@ -557,37 +561,37 @@ toInit ( model, cmd ) =
       , position = { left = 10000, top = 10000 }
       , viewportSize = { width = 0, height = 0 }
       , layout = Collapsed
-      , overlayModel = False
+      , isModelOverlayed = False
       , page = Updates
-      , drag = False
-      , hover = NoHover
+      , isDragging = False
+      , hover = None
       , importError = Nothing
       }
     , Cmd.batch
-        [ Cmd.map UpdateModel cmd
-        , Task.perform ViewportResized (Task.map Size.fromViewport Bd.getViewport)
+        [ Cmd.map UpdateWith cmd
+        , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
         ]
     )
 
 
 toSubscriptions : (model -> Sub msg) -> Model model msg -> Sub (Msg msg)
-toSubscriptions subscriptions { updates, position, drag } =
+toSubscriptions subscriptions { updates, position, isDragging } =
     Sub.batch
-        [ Sub.map UpdateModel (subscriptions (Tuple.second updates.current))
-        , Be.onResize (Size.map2 ViewportResized)
-        , U.subscribeIf drag
+        [ Sub.map UpdateWith (subscriptions (Tuple.second updates.current))
+        , Be.onResize (Size.map2 ResizeViewport)
+        , U.subscribeIf isDragging
             (Sub.batch
-                [ Be.onMouseMove (Jd.map DragTo (Position.mouseMoveDecoder position))
-                , Be.onMouseUp (Jd.succeed StopDrag)
+                [ Be.onMouseMove (Jd.map (Drag << To) (Position.mouseMoveDecoder position))
+                , Be.onMouseUp (Jd.succeed (Drag Stop))
                 ]
             )
         ]
 
 
 toUpdate : UpdateConfig model msg -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
-toUpdate { msgDecoder, encodeMsg, update } msg model =
+toUpdate { messageDecoder, encodeMessage, update } msg model =
     case msg of
-        UpdateModel updateMsg ->
+        UpdateWith updateMsg ->
             let
                 ( newModel, cmd ) =
                     update updateMsg (Tuple.second model.updates.current)
@@ -596,10 +600,10 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
                     Zl.dropHeads (Zl.insert ( Just updateMsg, newModel ) model.updates)
             in
             ( { model | updates = updates }
-            , Cmd.map UpdateModel cmd
+            , Cmd.map UpdateWith cmd
             )
 
-        SelectUpdate index ->
+        SelectUpdateAt index ->
             ( { model | updates = Zl.toIndex index model.updates }, Cmd.none )
 
         SelectPage page ->
@@ -608,9 +612,9 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
         FileSelected file ->
             ( model, Task.perform ImportUpdates (F.toString file) )
 
-        ToggleModel ->
+        ToggleModelOverlay ->
             ( { model
-                | overlayModel = not model.overlayModel
+                | isModelOverlayed = not model.isModelOverlayed
               }
             , Cmd.none
             )
@@ -618,7 +622,7 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
         ToggleLayout ->
             ( { model
                 | layout = toggleLayout model.layout
-                , overlayModel = model.overlayModel && model.layout == Collapsed
+                , isModelOverlayed = model.isModelOverlayed && model.layout == Collapsed
                 , position = updatePosition (layoutToSize (toggleLayout model.layout)) model.viewportSize model.position
               }
             , Cmd.none
@@ -627,7 +631,7 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
         SelectFile ->
             ( model, Fs.file [ "application/json" ] FileSelected )
 
-        ViewportResized viewportSize ->
+        ResizeViewport viewportSize ->
             let
                 layoutSize =
                     layoutToSize model.layout
@@ -639,7 +643,7 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
             , Cmd.none
             )
 
-        HoverElement hover ->
+        Hover hover ->
             ( { model | hover = hover }, Cmd.none )
 
         Dismiss ->
@@ -662,39 +666,41 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
             ( model
             , (Fd.string "elm-debug" "application/json"
                 << Je.encode 0
-                << Je.list encodeMsg
+                << Je.list encodeMessage
               )
                 (List.reverse (List.filterMap Tuple.first (Zl.toList model.updates)))
             )
 
-        StartDrag ->
-            ( { model | drag = True }, Cmd.none )
+        Drag event ->
+            case event of
+                Start ->
+                    ( { model | isDragging = True }, Cmd.none )
 
-        DragTo position ->
-            ( { model
-                | position =
-                    updatePosition (layoutToSize model.layout)
-                        model.viewportSize
-                        { position
-                            | top =
-                                position.top
-                                    - (if model.layout == Expanded then
-                                        207
+                To position ->
+                    ( { model
+                        | position =
+                            updatePosition (layoutToSize model.layout)
+                                model.viewportSize
+                                { position
+                                    | top =
+                                        position.top
+                                            - (if model.layout == Expanded then
+                                                207
 
-                                       else
-                                        9
-                                      )
-                            , left = position.left - 137
-                        }
-              }
-            , Cmd.none
-            )
+                                               else
+                                                9
+                                              )
+                                    , left = position.left - 137
+                                }
+                      }
+                    , Cmd.none
+                    )
 
-        StopDrag ->
-            ( { model | drag = False }, Cmd.none )
+                Stop ->
+                    ( { model | isDragging = False }, Cmd.none )
 
         ImportUpdates text ->
-            case Jd.decodeString (Jd.list msgDecoder) text of
+            case Jd.decodeString (Jd.list messageDecoder) text of
                 Ok msgs ->
                     ( { model
                         | updates = Zl.singleton (Zl.toTail model.updates).current
@@ -710,7 +716,7 @@ toUpdate { msgDecoder, encodeMsg, update } msg model =
                 head :: tails ->
                     ( model
                     , Cmd.batch
-                        [ U.msgToCmd (UpdateModel head)
+                        [ U.msgToCmd (UpdateWith head)
                         , U.msgToCmd (BatchMessages tails)
                         ]
                     )
