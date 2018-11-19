@@ -62,16 +62,14 @@ sandbox { init, view, update, debug } =
                 , encodeMsg = debug.encodeMsg
                 , update = \msg model -> ( update msg model, Cmd.none )
                 }
-        , subscriptions =
-            Debug.Main.toSubscriptions (always Sub.none)
+        , subscriptions = Debug.Main.toSubscriptions (always Sub.none)
         }
 
 
 element : ElementConfig flags model msg -> Debug.Main.Program flags model msg
 element { init, view, update, subscriptions, debug } =
     Browser.element
-        { init =
-            Debug.Main.toInit << init
+        { init = Debug.Main.toInit << init
         , view =
             Debug.Main.toHtml
                 { modelToString = debug.modelToString
@@ -85,16 +83,14 @@ element { init, view, update, subscriptions, debug } =
                 , encodeMsg = debug.encodeMsg
                 , update = update
                 }
-        , subscriptions =
-            Debug.Main.toSubscriptions subscriptions
+        , subscriptions = Debug.Main.toSubscriptions subscriptions
         }
 
 
 document : DocumentConfig flags model msg -> Debug.Main.Program flags model msg
 document { init, view, update, subscriptions, debug } =
     Browser.document
-        { init =
-            Debug.Main.toInit << init
+        { init = Debug.Main.toInit << init
         , view =
             Debug.Main.toDocument
                 { modelToString = debug.modelToString
@@ -108,16 +104,14 @@ document { init, view, update, subscriptions, debug } =
                 , encodeMsg = debug.encodeMsg
                 , update = update
                 }
-        , subscriptions =
-            Debug.Main.toSubscriptions subscriptions
+        , subscriptions = Debug.Main.toSubscriptions subscriptions
         }
 
 
 application : ApplicationConfig flags model msg -> Debug.Main.Program flags model msg
 application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debug } =
     Browser.application
-        { init =
-            \flags url key -> Debug.Main.toInit (init flags url key)
+        { init = \flags url key -> Debug.Main.toInit (init flags url key)
         , view =
             Debug.Main.toDocument
                 { modelToString = debug.modelToString
@@ -131,10 +125,7 @@ application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debu
                 , encodeMsg = debug.encodeMsg
                 , update = update
                 }
-        , subscriptions =
-            Debug.Main.toSubscriptions subscriptions
-        , onUrlChange =
-            Debug.Main.toMsg << onUrlChange
-        , onUrlRequest =
-            Debug.Main.toMsg << onUrlRequest
+        , subscriptions = Debug.Main.toSubscriptions subscriptions
+        , onUrlChange = Debug.Main.toMsg << onUrlChange
+        , onUrlRequest = Debug.Main.toMsg << onUrlRequest
         }
