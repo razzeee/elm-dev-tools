@@ -72,9 +72,17 @@ update msg model =
 
 
 view model =
-    case model.page of
-        Counter state ->
-            div []
+    div
+        [ style "display" "flex"
+        , style "flex-direction" "column"
+        , style "justify-content" "center"
+        , style "align-items" "center"
+        , style "height" "95vh"
+        , style "width" "95vw"
+        , style "overflow" "hidden"
+        ]
+        (case model.page of
+            Counter state ->
                 [ text ("Hello " ++ state.name)
                 , button [ onClick LogOut ] [ text "Log Out" ]
                 , div []
@@ -84,8 +92,7 @@ view model =
                     ]
                 ]
 
-        Authentication state ->
-            div []
+            Authentication state ->
                 [ input
                     [ type_ "text"
                     , value state.name
@@ -104,6 +111,7 @@ view model =
                     ]
                     [ text "Log In" ]
                 ]
+        )
 
 
 debug =
@@ -135,7 +143,17 @@ debug =
                 LogOut ->
                     Encode.object [ ( "LogOut", Encode.null ) ]
     , commands =
-        [ ( "To Count", [ NameInput "someone", LogIn, CountInput 1337 ] )
+        [ ( "Counter Page"
+          , LogOut
+                :: NameInput "Asger"
+                :: PassInput "Nielsen"
+                :: LogIn
+                :: CountInput 1337
+                :: []
+          )
+        , ( "LogIn Page"
+          , LogOut :: []
+          )
         ]
     }
 

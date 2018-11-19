@@ -46,16 +46,16 @@ type DragEvent
 
 
 type EventTarget
-    = ModelButton
+    = OverlayButton Bool
     | DragButton
     | DismissButton
-    | LayoutButton
+    | LayoutButton Layout
     | ImportButton
     | ExportButton
     | UpdateSlider
-    | NavigationButtonAt Int
-    | UpdateButtonAt Int
-    | CommandButtonAt Int
+    | NavigationButtonAt Int Page
+    | UpdateButtonAt Int String
+    | CommandButtonAt Int String
     | None
 
 
@@ -168,6 +168,57 @@ toCursorStyle isDragging target =
     Ha.style "cursor" cursor
 
 
+toTitle : EventTarget -> String
+toTitle target =
+    case target of
+        OverlayButton isModelOverlayed ->
+            if isModelOverlayed then
+                "Hide the model"
+
+            else
+                "Inspect the model"
+
+        DragButton ->
+            "Drag to a new position"
+
+        DismissButton ->
+            "Dismiss to the upper-right"
+
+        LayoutButton layout ->
+            case layout of
+                Expanded ->
+                    "Collapse to hide controls"
+
+                Collapsed ->
+                    "Expand to reveal controls"
+
+        ImportButton ->
+            "Import from a file"
+
+        ExportButton ->
+            "Export to a file"
+
+        UpdateSlider ->
+            "Scroll to other states"
+
+        NavigationButtonAt _ page ->
+            case page of
+                Updates ->
+                    "A list of updates"
+
+                Commands ->
+                    "A list of commands"
+
+        UpdateButtonAt _ model ->
+            model
+
+        CommandButtonAt _ msgs ->
+            msgs
+
+        None ->
+            ""
+
+
 layoutToSize : Layout -> Size
 layoutToSize layout =
     case layout of
@@ -194,8 +245,8 @@ viewDivider =
         []
 
 
-viewMaterialIconsSvg : List (S.Attribute (Msg msg)) -> List (Svg (Msg msg)) -> Html (Msg msg)
-viewMaterialIconsSvg attributes =
+viewIcon : List (S.Attribute (Msg msg)) -> List (Svg (Msg msg)) -> Html (Msg msg)
+viewIcon attributes =
     S.svg
         (Sa.width "15"
             :: Sa.height "15"
@@ -206,7 +257,7 @@ viewMaterialIconsSvg attributes =
 
 viewDragButton : EventTarget -> Bool -> Html (Msg msg)
 viewDragButton target isDragging =
-    viewMaterialIconsSvg
+    viewIcon
         [ Se.onMouseDown (Drag Start)
         , Se.onMouseOver (Hover DragButton)
         , Se.onMouseOut (Hover None)
@@ -216,13 +267,13 @@ viewDragButton target isDragging =
             , Sa.d "M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z"
             ]
             []
-        , S.title [] [ S.text "drag to a new position" ]
+        , S.title [] [ S.text (toTitle DragButton) ]
         ]
 
 
 viewDismissButton : EventTarget -> Size -> Position -> Html (Msg msg)
 viewDismissButton target { height, width } { top, left } =
-    viewMaterialIconsSvg
+    viewIcon
         [ Se.onClick Dismiss
         , Se.onMouseOver (Hover DismissButton)
         , Se.onMouseOut (Hover None)
@@ -232,13 +283,13 @@ viewDismissButton target { height, width } { top, left } =
             , Sa.fill (U.toIconColor (target == DismissButton) False)
             ]
             []
-        , S.title [] [ S.text "dismiss to the upper-right" ]
+        , S.title [] [ S.text (toTitle DismissButton) ]
         ]
 
 
 viewImportButton : EventTarget -> Html (Msg msg)
 viewImportButton target =
-    viewMaterialIconsSvg
+    viewIcon
         [ Se.onClick SelectFile
         , Se.onMouseOver (Hover ImportButton)
         , Se.onMouseOut (Hover None)
@@ -248,13 +299,13 @@ viewImportButton target =
             , Sa.fill (U.toIconColor (target == ImportButton) False)
             ]
             []
-        , S.title [] [ S.text "import another session" ]
+        , S.title [] [ S.text (toTitle ImportButton) ]
         ]
 
 
 viewExportButton : EventTarget -> Html (Msg msg)
 viewExportButton target =
-    viewMaterialIconsSvg
+    viewIcon
         [ Se.onClick ExportUpdates
         , Se.onMouseOver (Hover ExportButton)
         , Se.onMouseOut (Hover None)
@@ -264,60 +315,48 @@ viewExportButton target =
             , Sa.fill (U.toIconColor (target == ExportButton) False)
             ]
             []
-        , S.title [] [ S.text "export this session" ]
+        , S.title [] [ S.text (toTitle ExportButton) ]
         ]
 
 
-viewModelButton : EventTarget -> Bool -> Html (Msg msg)
-viewModelButton target modelOverlayed =
-    let
-        title =
-            if modelOverlayed then
-                "Hide the model"
-
-            else
-                "Inspect the model"
-    in
-    viewMaterialIconsSvg
+viewOverlayButton : EventTarget -> Bool -> Html (Msg msg)
+viewOverlayButton target isModelOverlayed =
+    viewIcon
         [ Se.onClick ToggleModelOverlay
-        , Se.onMouseOver (Hover ModelButton)
+        , Se.onMouseOver (Hover (OverlayButton isModelOverlayed))
         , Se.onMouseOut (Hover None)
         ]
         [ S.path
             [ Sa.d "M5,3H7V5H5V10A2,2 0 0,1 3,12A2,2 0 0,1 5,14V19H7V21H5C3.93,20.73 3,20.1 3,19V15A2,2 0 0,0 1,13H0V11H1A2,2 0 0,0 3,9V5A2,2 0 0,1 5,3M19,3A2,2 0 0,1 21,5V9A2,2 0 0,0 23,11H24V13H23A2,2 0 0,0 21,15V19A2,2 0 0,1 19,21H17V19H19V14A2,2 0 0,1 21,12A2,2 0 0,1 19,10V5H17V3H19M12,15A1,1 0 0,1 13,16A1,1 0 0,1 12,17A1,1 0 0,1 11,16A1,1 0 0,1 12,15M8,15A1,1 0 0,1 9,16A1,1 0 0,1 8,17A1,1 0 0,1 7,16A1,1 0 0,1 8,15M16,15A1,1 0 0,1 17,16A1,1 0 0,1 16,17A1,1 0 0,1 15,16A1,1 0 0,1 16,15Z"
-            , Sa.fill (U.toIconColor (target == ModelButton) modelOverlayed)
+            , Sa.fill (U.toIconColor (target == OverlayButton isModelOverlayed) isModelOverlayed)
             ]
             []
-        , S.title [] [ S.text title ]
+        , S.title [] [ S.text (toTitle (OverlayButton isModelOverlayed)) ]
         ]
 
 
 viewLayoutButton : EventTarget -> Layout -> Html (Msg msg)
 viewLayoutButton target layout =
     let
-        ( d, title ) =
+        d =
             case layout of
                 Expanded ->
-                    ( "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
-                    , "collapse the window"
-                    )
+                    "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"
 
                 Collapsed ->
-                    ( "M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"
-                    , "expand the window"
-                    )
+                    "M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"
     in
-    viewMaterialIconsSvg
+    viewIcon
         [ Se.onClick ToggleLayout
-        , Se.onMouseOver (Hover LayoutButton)
+        , Se.onMouseOver (Hover (LayoutButton layout))
         , Se.onMouseOut (Hover None)
         ]
         [ S.path
-            [ Sa.fill (U.toIconColor (target == LayoutButton) False)
+            [ Sa.fill (U.toIconColor (target == LayoutButton layout) False)
             , Sa.d d
             ]
             []
-        , S.title [] [ S.text title ]
+        , S.title [] [ S.text (toTitle (LayoutButton layout)) ]
         ]
 
 
@@ -341,7 +380,7 @@ viewOverlay viewportSize text =
 viewSlider : Int -> Int -> Html (Msg msg)
 viewSlider length currentIndex =
     H.div
-        [ Ha.title "scroll to previous states"
+        [ Ha.title (toTitle UpdateSlider)
         ]
         [ H.input
             [ Ha.style "margin" "0 5%"
@@ -360,14 +399,14 @@ viewSlider length currentIndex =
         ]
 
 
-viewUpdate : EventTarget -> Int -> ( Int, String ) -> Html (Msg msg)
-viewUpdate target currentIndex ( index, label ) =
+viewUpdate : EventTarget -> Int -> ( Int, String, String ) -> Html (Msg msg)
+viewUpdate target currentIndex ( index, label, model ) =
     let
         isSelected =
             index == currentIndex
 
         isHovered =
-            target == UpdateButtonAt index
+            target == UpdateButtonAt index model
 
         isOdd =
             modBy 2 index == 1
@@ -379,8 +418,9 @@ viewUpdate target currentIndex ( index, label ) =
         , Ha.style "padding" "0 9px"
         , Ha.style "background-color" (U.toListBackgroundColor isOdd isHovered isSelected)
         , Ha.style "color" (U.toListTextColor isSelected)
+        , Ha.title (toTitle (UpdateButtonAt index model))
         , He.onClick (SelectUpdateAt index)
-        , He.onMouseOver (Hover (UpdateButtonAt index))
+        , He.onMouseOver (Hover (UpdateButtonAt index model))
         , He.onMouseOut (Hover None)
         ]
         [ H.text (U.trim 24 label)
@@ -392,8 +432,8 @@ viewUpdate target currentIndex ( index, label ) =
         ]
 
 
-viewCommand : EventTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
-viewCommand target index ( label, msgs ) =
+viewCommand : (msg -> String) -> EventTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
+viewCommand printMsg target index ( label, msgs ) =
     U.selectable False
         [ Ha.style "width" "159px"
         , Ha.style "margin" "3px"
@@ -402,16 +442,17 @@ viewCommand target index ( label, msgs ) =
         , Ha.style "font-weight" "500"
         , Ha.style "text-align" "center"
         , Ha.style "border" U.border
-        , Ha.style "background-color" (U.toListBackgroundColor False (target == CommandButtonAt index) False)
-        , He.onMouseOver (Hover (CommandButtonAt index))
+        , Ha.title (toTitle (CommandButtonAt index (List.foldl (\a b -> b ++ "\n" ++ a) "" (List.map printMsg msgs))))
+        , Ha.style "background-color" (U.toListBackgroundColor False (target == CommandButtonAt index (List.foldl (++) "" (List.map printMsg msgs))) False)
+        , He.onMouseOver (Hover (CommandButtonAt index (List.foldl (++) "" (List.map printMsg msgs))))
         , He.onMouseOut (Hover None)
         , He.onClick (BatchMessages msgs)
         ]
-        [ H.text label
+        [ H.text (U.trim 16 label)
         ]
 
 
-viewPage : Int -> EventTarget -> (msg -> String) -> Size -> Page -> List ( Int, String ) -> List ( String, List msg ) -> Html (Msg msg)
+viewPage : Int -> EventTarget -> (msg -> String) -> Size -> Page -> List ( Int, String, String ) -> List ( String, List msg ) -> Html (Msg msg)
 viewPage currentIndex target printMessage layoutSize page updates commands =
     H.div
         [ Ha.style "height" (U.toPx (layoutSize.height - 38))
@@ -431,7 +472,7 @@ viewPage currentIndex target printMessage layoutSize page updates commands =
                 List.map (viewUpdate target currentIndex) updates
 
             Commands ->
-                List.indexedMap (viewCommand target) commands
+                List.indexedMap (viewCommand printMessage target) commands
 
 
 viewControls : List (Html (Msg msg)) -> Html (Msg msg)
@@ -459,16 +500,17 @@ viewNavigationPage index page modelPage target =
             page == modelPage
 
         isHovered =
-            target == NavigationButtonAt index
+            target == NavigationButtonAt index page
     in
     U.selectable False
         [ Ha.style "height" "18px"
         , Ha.style "line-height" "18px"
         , Ha.style "font-size" "9px"
         , Ha.style "padding" "0 9px"
-        , Ha.style "color" (U.toTextColor isHovered isSelected)
         , Ha.style "background-color" (U.toBackgroundColor isHovered isSelected)
-        , He.onMouseOver (Hover (NavigationButtonAt index))
+        , Ha.style "color" (U.toTextColor isHovered isSelected)
+        , Ha.title (toTitle (NavigationButtonAt index page))
+        , He.onMouseOver (Hover (NavigationButtonAt index page))
         , He.onMouseOut (Hover None)
         , He.onClick (SelectPage page)
         ]
@@ -476,8 +518,46 @@ viewNavigationPage index page modelPage target =
         ]
 
 
-viewDebug : (msg -> String) -> List ( String, List msg ) -> Model model msg -> Html (Msg msg)
-viewDebug printMessage commands model =
+viewNavigationUnderline : Page -> Html msg
+viewNavigationUnderline page =
+    H.div
+        [ Ha.style "border-bottom" ("2px solid " ++ U.toIconColor False True)
+        , Ha.style "position" "absolute"
+        , Ha.style "width"
+            (case page of
+                Updates ->
+                    "54px"
+
+                Commands ->
+                    "64px"
+            )
+        , Ha.style "top" "17px"
+        , Ha.style "left" "48px"
+        , Ha.style "transform"
+            (case page of
+                Updates ->
+                    "translate(0,0)"
+
+                Commands ->
+                    "translate(55px,0)"
+            )
+        , Ha.style "transition" "transform 140ms ease-out, width 140ms ease-out"
+        ]
+        []
+
+
+
+{-
+   border-bottom: 2px solid rgb(28, 171, 241);
+   position: absolute;
+   width: 54px;
+   top: 17px;
+   left: 48px;
+-}
+
+
+viewDebug : (msg -> String) -> (model -> String) -> List ( String, List msg ) -> Model model msg -> Html (Msg msg)
+viewDebug printMessage printModel commands model =
     let
         isExpanded =
             model.layout == Expanded
@@ -500,13 +580,14 @@ viewDebug printMessage commands model =
         [ U.viewIf isExpanded <|
             viewControls <|
                 [ viewButtons
-                    [ viewModelButton model.hover model.isModelOverlayed
+                    [ viewOverlayButton model.hover model.isModelOverlayed
                     , viewExportButton model.hover
                     , viewImportButton model.hover
                     ]
                 , viewDivider
                 , viewNavigationPage 0 Updates model.page model.hover
                 , viewNavigationPage 1 Commands model.page model.hover
+                , viewNavigationUnderline model.page
                 ]
         , U.viewIf isExpanded <|
             viewPage
@@ -515,7 +596,7 @@ viewDebug printMessage commands model =
                 printMessage
                 layoutSize
                 model.page
-                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, _ ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg) )) model.updates)))
+                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, mdl ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg), printModel mdl )) model.updates)))
                 commands
         , viewControls
             [ viewSlider (Zl.length model.updates) (List.length model.updates.tails)
@@ -536,7 +617,7 @@ toDocument { printModel, printMessage, commands, view } model =
         [ U.selectable (not model.isDragging)
             [ toCursorStyle model.isDragging model.hover
             ]
-            (viewDebug printMessage commands model
+            (viewDebug printMessage printModel commands model
                 :: U.viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
                 :: List.map (H.map UpdateWith) (.body (view (Tuple.second model.updates.current)))
             )
@@ -549,7 +630,7 @@ toHtml { printModel, printMessage, commands, view } model =
     U.selectable (not model.isDragging)
         [ toCursorStyle model.isDragging model.hover
         ]
-        [ viewDebug printMessage commands model
+        [ viewDebug printMessage printModel commands model
         , U.viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
         , H.map UpdateWith (view (Tuple.second model.updates.current))
         ]

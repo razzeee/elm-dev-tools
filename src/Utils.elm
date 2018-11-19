@@ -99,7 +99,7 @@ toListTextColor isSelected =
 toListBackgroundColor : Bool -> Bool -> Bool -> String
 toListBackgroundColor isOdd isHovered isSelected =
     if isSelected then
-        "#2096f3"
+        "#1cabf1"
 
     else if isOdd || isHovered then
         "#f5f5f5"
