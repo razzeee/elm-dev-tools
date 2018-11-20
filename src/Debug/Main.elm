@@ -452,14 +452,14 @@ pageToOverflow page =
 
 
 toCursorStyle : Bool -> Hoverable -> H.Attribute msg
-toCursorStyle isDragging target =
+toCursorStyle isDragging currentHover =
     let
         cursor =
             if isDragging then
                 "grabbing"
 
             else
-                case target of
+                case currentHover of
                     None ->
                         "unset"
 
@@ -512,13 +512,13 @@ viewIcon attributes =
 
 
 viewDragButton : Hoverable -> Bool -> Html (Msg msg)
-viewDragButton target isDragging =
+viewDragButton currentHover isDragging =
     let
-        color =
+        fill =
             if isDragging then
                 "#1cabf1"
 
-            else if DragButton == target then
+            else if DragButton == currentHover then
                 "black"
 
             else
@@ -530,7 +530,7 @@ viewDragButton target isDragging =
         , Se.onMouseOut (Hover None)
         ]
         [ S.path
-            [ Sa.fill color
+            [ Sa.fill fill
             , Sa.d "M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z"
             ]
             []
@@ -539,10 +539,10 @@ viewDragButton target isDragging =
 
 
 viewDismissButton : Hoverable -> Size -> Position -> Html (Msg msg)
-viewDismissButton target { height, width } { top, left } =
+viewDismissButton currentHover { height, width } { top, left } =
     let
-        color =
-            if DismissButton == target then
+        fill =
+            if DismissButton == currentHover then
                 "black"
 
             else
@@ -555,28 +555,26 @@ viewDismissButton target { height, width } { top, left } =
         ]
         [ S.path
             [ Sa.d "M5,17.59L15.59,7H9V5H19V15H17V8.41L6.41,19L5,17.59Z"
-            , Sa.fill color
+            , Sa.fill fill
             ]
             []
         , S.title [] [ S.text "Dismiss to the upper-right" ]
         ]
 
 
-toImportButtonColor : Bool -> Bool -> String
-toImportButtonColor isError isHovered =
-    if isHovered then
-        "black"
-
-    else if isError then
-        "red"
-
-    else
-        "#7c7c7c"
-
-
 viewImportButton : Hoverable -> Maybe Jd.Error -> Html (Msg msg)
-viewImportButton target importError =
+viewImportButton currentHover importError =
     let
+        fill =
+            if ImportButton == currentHover then
+                "black"
+
+            else if isJust importError then
+                "red"
+
+            else
+                "#7c7c7c"
+
         title =
             case importError of
                 Just decodeError ->
@@ -592,7 +590,7 @@ viewImportButton target importError =
         ]
         [ S.path
             [ Sa.d "M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13.5,16V19H10.5V16H8L12,12L16,16H13.5M13,9V3.5L18.5,9H13Z"
-            , Sa.fill (toImportButtonColor (isJust importError) (ImportButton == target))
+            , Sa.fill fill
             ]
             []
         , S.title [] [ S.text title ]
@@ -600,7 +598,7 @@ viewImportButton target importError =
 
 
 viewExportButton : Hoverable -> Bool -> Html (Msg msg)
-viewExportButton target isEnabled =
+viewExportButton currentHover isEnabled =
     let
         attributes =
             if isEnabled then
@@ -619,8 +617,8 @@ viewExportButton target isEnabled =
             else
                 "You need at least 1 update to export this session"
 
-        color =
-            if ExportButton == target then
+        fill =
+            if ExportButton == currentHover then
                 "black"
 
             else
@@ -630,7 +628,7 @@ viewExportButton target isEnabled =
         attributes
         [ S.path
             [ Sa.d "M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M18,20V9H13V4H6V20H18M12,19L8,15H10.5V12H13.5V15H16L12,19Z"
-            , Sa.fill color
+            , Sa.fill fill
             ]
             []
         , S.title [] [ S.text title ]
@@ -638,7 +636,7 @@ viewExportButton target isEnabled =
 
 
 viewOverlayButton : Hoverable -> Bool -> Html (Msg msg)
-viewOverlayButton target isModelOverlayed =
+viewOverlayButton currentHover isModelOverlayed =
     let
         title =
             if isModelOverlayed then
@@ -647,11 +645,11 @@ viewOverlayButton target isModelOverlayed =
             else
                 "Inspect the model"
 
-        color =
+        fill =
             if isModelOverlayed then
                 "#1cabf1"
 
-            else if OverlayButton == target then
+            else if OverlayButton == currentHover then
                 "black"
 
             else
@@ -664,7 +662,7 @@ viewOverlayButton target isModelOverlayed =
         ]
         [ S.path
             [ Sa.d "M5,3H7V5H5V10A2,2 0 0,1 3,12A2,2 0 0,1 5,14V19H7V21H5C3.93,20.73 3,20.1 3,19V15A2,2 0 0,0 1,13H0V11H1A2,2 0 0,0 3,9V5A2,2 0 0,1 5,3M19,3A2,2 0 0,1 21,5V9A2,2 0 0,0 23,11H24V13H23A2,2 0 0,0 21,15V19A2,2 0 0,1 19,21H17V19H19V14A2,2 0 0,1 21,12A2,2 0 0,1 19,10V5H17V3H19M12,15A1,1 0 0,1 13,16A1,1 0 0,1 12,17A1,1 0 0,1 11,16A1,1 0 0,1 12,15M8,15A1,1 0 0,1 9,16A1,1 0 0,1 8,17A1,1 0 0,1 7,16A1,1 0 0,1 8,15M16,15A1,1 0 0,1 17,16A1,1 0 0,1 16,17A1,1 0 0,1 15,16A1,1 0 0,1 16,15Z"
-            , Sa.fill color
+            , Sa.fill fill
             ]
             []
         , S.title [] [ S.text title ]
@@ -672,7 +670,7 @@ viewOverlayButton target isModelOverlayed =
 
 
 viewLayoutButton : Hoverable -> Layout -> Html (Msg msg)
-viewLayoutButton target layout =
+viewLayoutButton currentHover layout =
     let
         ( title, d ) =
             case layout of
@@ -686,8 +684,8 @@ viewLayoutButton target layout =
                     , "M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"
                     )
 
-        color =
-            if LayoutButton == target then
+        fill =
+            if LayoutButton == currentHover then
                 "black"
 
             else
@@ -699,7 +697,7 @@ viewLayoutButton target layout =
         , Se.onMouseOut (Hover None)
         ]
         [ S.path
-            [ Sa.fill color
+            [ Sa.fill fill
             , Sa.d d
             ]
             []
@@ -747,7 +745,7 @@ viewSlider length currentIndex =
 
 
 viewUpdate : Hoverable -> Int -> ( Int, String, String ) -> Html (Msg msg)
-viewUpdate target currentIndex ( index, msgString, modelString ) =
+viewUpdate currentHover currentIndex ( index, msgString, modelString ) =
     let
         isSelected =
             index == currentIndex
@@ -763,7 +761,7 @@ viewUpdate target currentIndex ( index, msgString, modelString ) =
             if isSelected then
                 "#1cabf1"
 
-            else if UpdateButtonAt index == target then
+            else if UpdateButtonAt index == currentHover then
                 "#f1f6fd"
 
             else if isOdd index then
@@ -794,13 +792,13 @@ viewUpdate target currentIndex ( index, msgString, modelString ) =
 
 
 viewCommand : (msg -> String) -> Hoverable -> Int -> ( String, List msg ) -> Html (Msg msg)
-viewCommand printMsg target index ( label, msgs ) =
+viewCommand printMsg currentHover index ( label, msgs ) =
     let
         this =
             CommandButtonAt index
 
         backgroundColor =
-            if CommandButtonAt index == target then
+            if CommandButtonAt index == currentHover then
                 "#f5f5f5"
 
             else
@@ -825,15 +823,15 @@ viewCommand printMsg target index ( label, msgs ) =
 
 
 viewPage : Int -> Hoverable -> (msg -> String) -> Size -> Page -> List ( Int, String, String ) -> List ( String, List msg ) -> Html (Msg msg)
-viewPage currentIndex target printMessage layoutSize page updates commands =
+viewPage currentIndex currentHover printMessage layoutSize page updates commands =
     let
         body =
             case page of
                 Updates ->
-                    List.map (viewUpdate target currentIndex) updates
+                    List.map (viewUpdate currentHover currentIndex) updates
 
                 Commands ->
-                    List.indexedMap (viewCommand printMessage target) commands
+                    List.indexedMap (viewCommand printMessage currentHover) commands
     in
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
@@ -862,16 +860,16 @@ viewButtons =
 
 
 viewNavigationPage : Int -> Page -> Page -> Hoverable -> Html (Msg msg)
-viewNavigationPage index page modelPage target =
+viewNavigationPage index page currentPage currentHover =
     let
         this =
             NavigationButtonFor page
 
         isSelected =
-            page == modelPage
+            page == currentPage
 
         isHovered =
-            this == target
+            this == currentHover
 
         color =
             if isSelected || isHovered then
