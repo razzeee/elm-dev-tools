@@ -51,11 +51,12 @@ toDocument : ViewConfig model msg (Browser.Document msg) -> Model model msg -> B
 toDocument { printModel, printMessage, commands, view } model =
     { title = "Debug"
     , body =
-        [ selectable (not model.isDragging)
-            [ toCursorStyle model.isDragging model.hoverable
-            ]
-            (viewDebug printMessage printModel commands model
-                :: viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+        [ Hl.lazy3
+            selectable
+            (not model.isDragging)
+            [ toCursorStyle model.isDragging model.hoverable ]
+            (Hl.lazy4 viewDebug printMessage printModel commands model
+                :: Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
                 :: List.map (H.map UpdateWith) (.body (view (Tuple.second model.updates.current)))
             )
         ]
@@ -64,12 +65,14 @@ toDocument { printModel, printMessage, commands, view } model =
 
 toHtml : ViewConfig model msg (Html msg) -> Model model msg -> Html (Msg msg)
 toHtml { printModel, printMessage, commands, view } model =
-    selectable (not model.isDragging)
+    Hl.lazy3
+        selectable
+        (not model.isDragging)
         [ toCursorStyle model.isDragging model.hoverable
         ]
-        [ viewDebug printMessage printModel commands model
-        , viewIf model.isModelOverlayed (viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
-        , H.map UpdateWith (view (Tuple.second model.updates.current))
+        [ Hl.lazy4 viewDebug printMessage printModel commands model
+        , Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+        , H.map UpdateWith (Hl.lazy view (Tuple.second model.updates.current))
         ]
 
 
@@ -966,17 +969,18 @@ viewDebug printMessage printModel commands model =
         [ viewIf isExpanded <|
             viewControls <|
                 [ viewButtons
-                    [ viewOverlayButton model.hoverable model.isModelOverlayed
-                    , viewExportButton model.hoverable (Zl.length model.updates > 1)
-                    , viewImportButton model.hoverable model.importError
+                    [ Hl.lazy2 viewOverlayButton model.hoverable model.isModelOverlayed
+                    , Hl.lazy2 viewExportButton model.hoverable (Zl.length model.updates > 1)
+                    , Hl.lazy2 viewImportButton model.hoverable model.importError
                     ]
                 , viewDivider
-                , viewNavigationPage 0 Updates model.page model.hoverable
-                , viewNavigationPage 1 Commands model.page model.hoverable
-                , viewNavigationUnderline model.page
+                , Hl.lazy4 viewNavigationPage 0 Updates model.page model.hoverable
+                , Hl.lazy4 viewNavigationPage 1 Commands model.page model.hoverable
+                , Hl.lazy viewNavigationUnderline model.page
                 ]
         , viewIf isExpanded <|
-            viewPage
+            -- TODO -- Refactor viewPage to take a record instead of 7 individual args
+            Hl.lazy7 viewPage
                 (Zl.currentIndex model.updates)
                 model.hoverable
                 printMessage
@@ -985,12 +989,12 @@ viewDebug printMessage printModel commands model =
                 (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, mdl ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg), printModel mdl )) model.updates)))
                 commands
         , viewControls
-            [ viewSlider (Zl.length model.updates) (Zl.currentIndex model.updates)
+            [ Hl.lazy2 viewSlider (Zl.length model.updates) (Zl.currentIndex model.updates)
             , viewDivider
             , viewButtons
-                [ viewDragButton model.hoverable model.isDragging
-                , viewDismissButton model.hoverable layoutSize model.position
-                , viewLayoutButton model.hoverable model.layout
+                [ Hl.lazy2 viewDragButton model.hoverable model.isDragging
+                , Hl.lazy3 viewDismissButton model.hoverable layoutSize model.position
+                , Hl.lazy2 viewLayoutButton model.hoverable model.layout
                 ]
             ]
         ]
