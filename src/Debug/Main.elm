@@ -54,7 +54,7 @@ type EventTarget
     | ExportButton
     | UpdateSlider
     | NavigationButtonAt Int Page
-    | UpdateButtonAt Int String
+    | UpdateButtonAt Int String String
     | CommandButtonAt Int String
     | None
 
@@ -85,7 +85,7 @@ type Msg msg
     | FileSelected File
     | ImportUpdates String
     | ExportUpdates
-    | BatchMessages (List msg)
+    | BatchMessages (Maybe Int) (List msg)
     | Dismiss
     | DoNothing
 
@@ -134,6 +134,19 @@ toggleLayout layout =
             Collapsed
 
 
+toRelativeDragButtonPosition : Position -> Layout -> Position
+toRelativeDragButtonPosition { top, left } layout =
+    { left = left - 137
+    , top =
+        case layout of
+            Expanded ->
+                top - 207
+
+            Collapsed ->
+                top - 9
+    }
+
+
 pageToString : Page -> String
 pageToString page =
     case page of
@@ -178,6 +191,16 @@ toCursorStyle isDragging target =
     Ha.style "cursor" cursor
 
 
+exportDisabledTitle : String
+exportDisabledTitle =
+    "You need at least 1 update to export this session"
+
+
+initStateLabel : String
+initStateLabel =
+    "Init"
+
+
 toTitle : EventTarget -> String
 toTitle target =
     case target of
@@ -219,8 +242,8 @@ toTitle target =
                 Commands ->
                     "A list of commands"
 
-        UpdateButtonAt _ model ->
-            model
+        UpdateButtonAt _ msgString modelString ->
+            msgString ++ "\n\n" ++ modelString
 
         CommandButtonAt _ msgs ->
             msgs
@@ -313,19 +336,40 @@ viewImportButton target =
         ]
 
 
-viewExportButton : EventTarget -> Html (Msg msg)
-viewExportButton target =
-    viewIcon
+toViewExportButtonAttributes : Bool -> List (S.Attribute (Msg msg))
+toViewExportButtonAttributes isEnabled =
+    if isEnabled then
         [ Se.onClick ExportUpdates
         , Se.onMouseOver (Hover ExportButton)
         , Se.onMouseOut (Hover None)
         ]
+
+    else
+        []
+
+
+toViewExportButtonText : Bool -> String
+toViewExportButtonText isEnabled =
+    if isEnabled then
+        toTitle ExportButton
+
+    else
+        exportDisabledTitle
+
+
+viewExportButton : EventTarget -> Bool -> Html (Msg msg)
+viewExportButton target isEnabled =
+    viewIcon
+        (toViewExportButtonAttributes isEnabled)
         [ S.path
             [ Sa.d "M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M18,20V9H13V4H6V20H18M12,19L8,15H10.5V12H13.5V15H16L12,19Z"
             , Sa.fill (U.toIconColor (target == ExportButton) False)
             ]
             []
-        , S.title [] [ S.text (toTitle ExportButton) ]
+        , S.title []
+            [ S.text
+                (toViewExportButtonText isEnabled)
+            ]
         ]
 
 
@@ -410,13 +454,13 @@ viewSlider length currentIndex =
 
 
 viewUpdate : EventTarget -> Int -> ( Int, String, String ) -> Html (Msg msg)
-viewUpdate target currentIndex ( index, label, model ) =
+viewUpdate target currentIndex ( index, msgString, modelString ) =
     let
         isSelected =
             index == currentIndex
 
         isHovered =
-            target == UpdateButtonAt index model
+            target == UpdateButtonAt index modelString msgString
 
         isOdd =
             modBy 2 index == 1
@@ -428,12 +472,12 @@ viewUpdate target currentIndex ( index, label, model ) =
         , Ha.style "padding" "0 9px"
         , Ha.style "background-color" (U.toListBackgroundColor isOdd isHovered isSelected)
         , Ha.style "color" (U.toListTextColor isSelected)
-        , Ha.title (toTitle (UpdateButtonAt index model))
+        , Ha.title (toTitle (UpdateButtonAt index msgString modelString))
         , He.onClick (SelectUpdateAt index)
-        , He.onMouseOver (Hover (UpdateButtonAt index model))
+        , He.onMouseOver (Hover (UpdateButtonAt index msgString modelString))
         , He.onMouseOut (Hover None)
         ]
-        [ H.text (U.trim 24 label)
+        [ H.text (U.trim 24 msgString)
         , H.span
             [ Ha.style "float" "right"
             ]
@@ -460,7 +504,7 @@ viewCommand printMsg target index ( label, msgs ) =
         , Ha.title (toTitle commandTarget)
         , He.onMouseOver (Hover commandTarget)
         , He.onMouseOut (Hover None)
-        , He.onClick (BatchMessages msgs)
+        , He.onClick (BatchMessages Nothing msgs)
         ]
         [ H.text (U.trim 16 label)
         ]
@@ -587,7 +631,7 @@ viewDebug printMessage printModel commands model =
             viewControls <|
                 [ viewButtons
                     [ viewOverlayButton model.hover model.isModelOverlayed
-                    , viewExportButton model.hover
+                    , viewExportButton model.hover (Zl.length model.updates > 1)
                     , viewImportButton model.hover
                     ]
                 , viewDivider
@@ -597,15 +641,15 @@ viewDebug printMessage printModel commands model =
                 ]
         , U.viewIf isExpanded <|
             viewPage
-                (List.length model.updates.tails)
+                (Zl.currentIndex model.updates)
                 model.hover
                 printMessage
                 layoutSize
                 model.page
-                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, mdl ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg), printModel mdl )) model.updates)))
+                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, mdl ) -> ( index, Maybe.withDefault initStateLabel (Maybe.map printMessage msg), printModel mdl )) model.updates)))
                 commands
         , viewControls
-            [ viewSlider (Zl.length model.updates) (List.length model.updates.tails)
+            [ viewSlider (Zl.length model.updates) (Zl.currentIndex model.updates)
             , viewDivider
             , viewButtons
                 [ viewDragButton model.hover model.isDragging
@@ -645,6 +689,12 @@ toHtml { printModel, printMessage, commands, view } model =
 toInit : ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
 toInit ( model, cmd ) =
     ( { updates = Zl.singleton ( Nothing, model )
+
+      -- TODO -- remove the invalid state where
+      -- { model
+      --     | position = { left = 10000, top = 10000 }
+      --     , viewportSize = { width = 0, height = 0 }
+      -- }
       , position = { left = 10000, top = 10000 }
       , viewportSize = { width = 0, height = 0 }
       , layout = Collapsed
@@ -750,63 +800,58 @@ toUpdate { messageDecoder, encodeMessage, update } msg model =
             ( model, Cmd.none )
 
         ExportUpdates ->
-            ( model
-            , (Fd.string "elm-debug" "application/json"
-                << Je.encode 0
-                << Je.list encodeMessage
-              )
-                (List.reverse (List.filterMap Tuple.first (Zl.toList model.updates)))
-            )
+            case Zl.filterMap Tuple.first model.updates of
+                Nothing ->
+                    ( model, Cmd.none )
 
-        Drag event ->
-            case event of
-                Start ->
-                    ( { model | isDragging = True }, Cmd.none )
-
-                To position ->
-                    ( { model
-                        | position =
-                            updatePosition (layoutToSize model.layout)
-                                model.viewportSize
-                                { position
-                                    | top =
-                                        position.top
-                                            - (if model.layout == Expanded then
-                                                207
-
-                                               else
-                                                9
-                                              )
-                                    , left = position.left - 137
-                                }
-                      }
-                    , Cmd.none
+                Just msgZl ->
+                    ( model
+                      -- TODO -- generate appropriate name instead of "elm-debug", based on Browser.Document.title, if available
+                    , Fd.string "elm-debug" "application/json" (Je.encode 0 (Zl.jsonEncode encodeMessage msgZl))
                     )
 
-                Stop ->
-                    ( { model | isDragging = False }, Cmd.none )
+        Drag Start ->
+            ( { model | isDragging = True }, Cmd.none )
+
+        Drag (To position) ->
+            ( { model
+                | position =
+                    updatePosition
+                        (layoutToSize model.layout)
+                        model.viewportSize
+                        (toRelativeDragButtonPosition position model.layout)
+              }
+            , Cmd.none
+            )
+
+        Drag Stop ->
+            ( { model | isDragging = False }, Cmd.none )
 
         ImportUpdates text ->
-            case Jd.decodeString (Jd.list messageDecoder) text of
-                Ok msgs ->
-                    ( { model
-                        | updates = Zl.singleton (Zl.toTail model.updates).current
-                      }
-                    , U.msgToCmd (BatchMessages (List.reverse msgs))
+            case Jd.decodeString (Zl.jsonDecoder messageDecoder) text of
+                Ok updates ->
+                    ( { model | updates = Zl.singleton (Zl.toHead model.updates).current }
+                    , U.msgToCmd (BatchMessages (Just (Zl.currentIndex updates + 1)) (Zl.toList updates))
                     )
 
                 Err err ->
+                    -- TODO -- handle the import error case with some kind of feedback to the user
                     ( { model | importError = Just err }, Cmd.none )
 
-        BatchMessages msgs ->
+        BatchMessages selectIndex msgs ->
             case msgs of
                 head :: tails ->
                     ( model
                     , Cmd.batch
                         [ U.msgToCmd (UpdateWith head)
-                        , U.msgToCmd (BatchMessages tails)
+                        , U.msgToCmd (BatchMessages selectIndex tails)
                         ]
                     )
 
                 [] ->
-                    ( model, Cmd.none )
+                    case selectIndex of
+                        Just index ->
+                            ( model, U.msgToCmd (SelectUpdateAt index) )
+
+                        Nothing ->
+                            ( model, Cmd.none )

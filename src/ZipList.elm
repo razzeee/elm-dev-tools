@@ -3,10 +3,14 @@ module ZipList exposing
     , atHead
     , atTail
     , backward
+    , currentIndex
     , dropHeads
+    , filterMap
     , forward
     , indexedMap
     , insert
+    , jsonDecoder
+    , jsonEncode
     , length
     , map
     , singleton
@@ -16,6 +20,9 @@ module ZipList exposing
     , toTail
     , trim
     )
+
+import Json.Decode as Jd
+import Json.Encode as Je
 
 
 type alias ZipList value =
@@ -37,9 +44,45 @@ trim newLength zl =
         trim newLength { zl | tails = List.take (List.length zl.tails - 1) zl.tails }
 
 
+currentIndex : ZipList value -> Int
+currentIndex zl =
+    List.length zl.tails
+
+
 map : (value -> a) -> ZipList value -> ZipList a
 map op zl =
-    { heads = List.map op zl.heads, current = op zl.current, tails = List.map op zl.tails }
+    { heads = List.map op zl.heads
+    , current = op zl.current
+    , tails = List.map op zl.tails
+    }
+
+
+filterMap : (value -> Maybe b) -> ZipList value -> Maybe (ZipList b)
+filterMap op zl =
+    case ( op zl.current, Maybe.andThen op (List.head zl.heads), Maybe.andThen op (List.head zl.tails) ) of
+        ( Just current, _, _ ) ->
+            Just
+                { heads = List.filterMap op zl.heads
+                , current = current
+                , tails = List.filterMap op zl.tails
+                }
+
+        ( Nothing, Just head, _ ) ->
+            Just
+                { heads = List.filterMap op (Maybe.withDefault [] (List.tail zl.heads))
+                , current = head
+                , tails = List.filterMap op zl.tails
+                }
+
+        ( Nothing, _, Just tail ) ->
+            Just
+                { heads = List.filterMap op zl.heads
+                , current = tail
+                , tails = List.filterMap op (Maybe.withDefault [] (List.tail zl.tails))
+                }
+
+        ( Nothing, Nothing, Nothing ) ->
+            Nothing
 
 
 indexedMap : (Int -> value -> a) -> ZipList value -> ZipList a
@@ -166,3 +209,21 @@ backward zl =
             , current = newCurrent
             , tails = newTails
             }
+
+
+jsonEncode : (value -> Je.Value) -> ZipList value -> Je.Value
+jsonEncode encodeValue { heads, current, tails } =
+    Je.object
+        [ ( "heads", Je.list encodeValue heads )
+        , ( "current", encodeValue current )
+        , ( "tails", Je.list encodeValue tails )
+        ]
+
+
+jsonDecoder : Jd.Decoder value -> Jd.Decoder (ZipList value)
+jsonDecoder valueDecoder =
+    Jd.map3
+        ZipList
+        (Jd.field "heads" (Jd.list valueDecoder))
+        (Jd.field "current" valueDecoder)
+        (Jd.field "tails" (Jd.list valueDecoder))

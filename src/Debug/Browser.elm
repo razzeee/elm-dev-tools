@@ -54,7 +54,7 @@ sandbox { init, view, update, debug } =
                 { printModel = debug.printModel
                 , printMessage = debug.printMessage
                 , commands = debug.commands
-                , view = \model -> { title = "Debug", body = view model :: [] }
+                , view = \model -> { title = "Elm Debug", body = view model :: [] }
                 }
         , update =
             Debug.Main.toUpdate
