@@ -201,6 +201,11 @@ initStateLabel =
     "Init"
 
 
+jsonMimeType : String
+jsonMimeType =
+    "application/json"
+
+
 toTitle : EventTarget -> String
 toTitle target =
     case target of
@@ -461,16 +466,13 @@ viewUpdate target currentIndex ( index, msgString, modelString ) =
 
         isHovered =
             target == UpdateButtonAt index modelString msgString
-
-        isOdd =
-            modBy 2 index == 1
     in
     U.selectable False
         [ Ha.style "height" "18px"
         , Ha.style "line-height" "18px"
         , Ha.style "font-size" "8px"
         , Ha.style "padding" "0 9px"
-        , Ha.style "background-color" (U.toListBackgroundColor isOdd isHovered isSelected)
+        , Ha.style "background-color" (U.toListBackgroundColor (U.isOdd index) isHovered isSelected)
         , Ha.style "color" (U.toListTextColor isSelected)
         , Ha.title (toTitle (UpdateButtonAt index msgString modelString))
         , He.onClick (SelectUpdateAt index)
@@ -489,7 +491,7 @@ viewUpdate target currentIndex ( index, msgString, modelString ) =
 viewCommand : (msg -> String) -> EventTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
 viewCommand printMsg target index ( label, msgs ) =
     let
-        commandTarget =
+        this =
             CommandButtonAt index (U.join (\a b -> b ++ "\n " ++ a) "" (List.map printMsg msgs))
     in
     U.selectable False
@@ -500,9 +502,9 @@ viewCommand printMsg target index ( label, msgs ) =
         , Ha.style "font-weight" "500"
         , Ha.style "text-align" "center"
         , Ha.style "border" U.border
-        , Ha.style "background-color" (U.toListBackgroundColor False (target == commandTarget) False)
-        , Ha.title (toTitle commandTarget)
-        , He.onMouseOver (Hover commandTarget)
+        , Ha.style "background-color" (U.toListBackgroundColor False (target == this) False)
+        , Ha.title (toTitle this)
+        , He.onMouseOver (Hover this)
         , He.onMouseOut (Hover None)
         , He.onClick (BatchMessages Nothing msgs)
         ]
@@ -766,7 +768,7 @@ toUpdate { messageDecoder, encodeMessage, update } msg model =
             )
 
         SelectFile ->
-            ( model, Fs.file [ "application/json" ] FileSelected )
+            ( model, Fs.file [ jsonMimeType ] FileSelected )
 
         ResizeViewport viewportSize ->
             let
@@ -807,7 +809,7 @@ toUpdate { messageDecoder, encodeMessage, update } msg model =
                 Just msgZl ->
                     ( model
                       -- TODO -- generate appropriate name instead of "elm-debug", based on Browser.Document.title, if available
-                    , Fd.string "elm-debug" "application/json" (Je.encode 0 (Zl.jsonEncode encodeMessage msgZl))
+                    , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (Zl.jsonEncode encodeMessage msgZl))
                     )
 
         Drag Start ->

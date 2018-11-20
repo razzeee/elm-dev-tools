@@ -2,6 +2,7 @@ module Utils exposing
     ( attributeIf
     , border
     , darkGray
+    , isOdd
     , join
     , msgToCmd
     , noHtml
@@ -176,3 +177,8 @@ join add unit list =
 
         [] ->
             unit
+
+
+isOdd : Int -> Bool
+isOdd n =
+    modBy 2 n == 1
