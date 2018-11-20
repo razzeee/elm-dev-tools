@@ -2,6 +2,7 @@ module Utils exposing
     ( attributeIf
     , border
     , darkGray
+    , join
     , msgToCmd
     , noHtml
     , onRightClick
@@ -165,3 +166,13 @@ subscribeIf isSubscribing subscribe =
 
     else
         Sub.none
+
+
+join : (a -> a -> a) -> a -> List a -> a
+join add unit list =
+    case list of
+        head :: tails ->
+            List.foldl add head tails
+
+        [] ->
+            unit

@@ -144,6 +144,16 @@ pageToString page =
             "Updates"
 
 
+pageToOverflow : Page -> String
+pageToOverflow page =
+    case page of
+        Commands ->
+            "hidden scroll"
+
+        Updates ->
+            "hidden"
+
+
 toCursorStyle : Bool -> EventTarget -> H.Attribute msg
 toCursorStyle isDragging target =
     let
@@ -434,6 +444,10 @@ viewUpdate target currentIndex ( index, label, model ) =
 
 viewCommand : (msg -> String) -> EventTarget -> Int -> ( String, List msg ) -> Html (Msg msg)
 viewCommand printMsg target index ( label, msgs ) =
+    let
+        commandTarget =
+            CommandButtonAt index (U.join (\a b -> b ++ "\n " ++ a) "" (List.map printMsg msgs))
+    in
     U.selectable False
         [ Ha.style "width" "159px"
         , Ha.style "margin" "3px"
@@ -442,9 +456,9 @@ viewCommand printMsg target index ( label, msgs ) =
         , Ha.style "font-weight" "500"
         , Ha.style "text-align" "center"
         , Ha.style "border" U.border
-        , Ha.title (toTitle (CommandButtonAt index (List.foldl (\a b -> b ++ "\n" ++ a) "" (List.map printMsg msgs))))
-        , Ha.style "background-color" (U.toListBackgroundColor False (target == CommandButtonAt index (List.foldl (++) "" (List.map printMsg msgs))) False)
-        , He.onMouseOver (Hover (CommandButtonAt index (List.foldl (++) "" (List.map printMsg msgs))))
+        , Ha.style "background-color" (U.toListBackgroundColor False (target == commandTarget) False)
+        , Ha.title (toTitle commandTarget)
+        , He.onMouseOver (Hover commandTarget)
         , He.onMouseOut (Hover None)
         , He.onClick (BatchMessages msgs)
         ]
@@ -454,25 +468,21 @@ viewCommand printMsg target index ( label, msgs ) =
 
 viewPage : Int -> EventTarget -> (msg -> String) -> Size -> Page -> List ( Int, String, String ) -> List ( String, List msg ) -> Html (Msg msg)
 viewPage currentIndex target printMessage layoutSize page updates commands =
-    H.div
-        [ Ha.style "height" (U.toPx (layoutSize.height - 38))
-        , Ha.style "border-bottom" U.border
-        , Ha.style "overflow"
-            (case page of
-                Commands ->
-                    "hidden scroll"
-
+    let
+        body =
+            case page of
                 Updates ->
-                    "hidden"
-            )
-        ]
-    <|
-        case page of
-            Updates ->
-                List.map (viewUpdate target currentIndex) updates
+                    List.map (viewUpdate target currentIndex) updates
 
-            Commands ->
-                List.indexedMap (viewCommand printMessage target) commands
+                Commands ->
+                    List.indexedMap (viewCommand printMessage target) commands
+    in
+    H.div
+        [ Ha.style "border-bottom" U.border
+        , Ha.style "height" (U.toPx (layoutSize.height - 38))
+        , Ha.style "overflow" (pageToOverflow page)
+        ]
+        body
 
 
 viewControls : List (Html (Msg msg)) -> Html (Msg msg)
@@ -518,42 +528,38 @@ viewNavigationPage index page modelPage target =
         ]
 
 
+toNavigationUnderlineWidth : Page -> Int
+toNavigationUnderlineWidth page =
+    case page of
+        Updates ->
+            54
+
+        Commands ->
+            64
+
+
+toNavigationUnderlineTransform : Page -> String
+toNavigationUnderlineTransform page =
+    case page of
+        Updates ->
+            "translate(0,0)"
+
+        Commands ->
+            "translate(55px,0)"
+
+
 viewNavigationUnderline : Page -> Html msg
 viewNavigationUnderline page =
     H.div
-        [ Ha.style "border-bottom" ("2px solid " ++ U.toIconColor False True)
-        , Ha.style "position" "absolute"
-        , Ha.style "width"
-            (case page of
-                Updates ->
-                    "54px"
-
-                Commands ->
-                    "64px"
-            )
+        [ Ha.style "position" "absolute"
         , Ha.style "top" "17px"
         , Ha.style "left" "48px"
-        , Ha.style "transform"
-            (case page of
-                Updates ->
-                    "translate(0,0)"
-
-                Commands ->
-                    "translate(55px,0)"
-            )
         , Ha.style "transition" "transform 140ms ease-out, width 140ms ease-out"
+        , Ha.style "border-bottom" ("2px solid " ++ U.toIconColor False True)
+        , Ha.style "width" (U.toPx (toNavigationUnderlineWidth page))
+        , Ha.style "transform" (toNavigationUnderlineTransform page)
         ]
         []
-
-
-
-{-
-   border-bottom: 2px solid rgb(28, 171, 241);
-   position: absolute;
-   width: 54px;
-   top: 17px;
-   left: 48px;
--}
 
 
 viewDebug : (msg -> String) -> (model -> String) -> List ( String, List msg ) -> Model model msg -> Html (Msg msg)
