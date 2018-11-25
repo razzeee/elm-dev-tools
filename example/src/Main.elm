@@ -1,13 +1,15 @@
-module Main exposing (main)
+port module Main exposing (main)
 
-import Browser exposing (..)
+import Browser
 import Debug.Browser
-import Html exposing (..)
-import Html.Attributes exposing (..)
-import Html.Events exposing (..)
-import Json.Decode as Decode
-import Json.Encode as Encode
-import String exposing (..)
+import Html as H exposing (Html)
+import Html.Attributes as Ha
+import Html.Events as He
+import Json.Decode as Jd
+import Json.Encode as Je
+
+
+port outPort : Jd.Value -> Cmd msg
 
 
 type Msg
@@ -23,145 +25,121 @@ type Page
     | Counter { name : String, count : Int }
 
 
-init =
-    { page = Authentication { name = "", pass = "" }
-    }
+init _ =
+    ( { page = Authentication { name = "", pass = "" }
+      }
+    , Cmd.none
+    )
 
 
 update msg model =
-    case msg of
-        NameInput name ->
-            case model.page of
-                Authentication state ->
-                    { model | page = Authentication { state | name = name } }
+    case ( msg, model.page ) of
+        ( NameInput name, Authentication state ) ->
+            ( { model | page = Authentication { state | name = name } }, Cmd.none )
 
-                _ ->
-                    model
+        ( PassInput pass, Authentication state ) ->
+            ( { model | page = Authentication { state | pass = pass } }, Cmd.none )
 
-        PassInput pass ->
-            case model.page of
-                Authentication state ->
-                    { model | page = Authentication { state | pass = pass } }
+        ( CountInput count, Counter state ) ->
+            ( { model | page = Counter { state | count = count } }, Cmd.none )
 
-                _ ->
-                    model
+        ( LogIn, Authentication state ) ->
+            ( { model | page = Counter { name = state.name, count = 0 } }, Cmd.none )
 
-        CountInput count ->
-            case model.page of
-                Counter state ->
-                    { model | page = Counter { state | count = count } }
+        ( LogOut, Counter state ) ->
+            ( { model | page = Authentication { name = "", pass = "" } }, Cmd.none )
 
-                _ ->
-                    model
+        _ ->
+            ( model, Cmd.none )
 
-        LogIn ->
-            case model.page of
-                Authentication state ->
-                    { model | page = Counter { name = state.name, count = 0 } }
 
-                _ ->
-                    model
-
-        LogOut ->
-            case model.page of
-                Counter _ ->
-                    { model | page = Authentication { name = "", pass = "" } }
-
-                _ ->
-                    model
+subscriptions model =
+    Sub.none
 
 
 view model =
-    div
-        [ style "display" "flex"
-        , style "flex-direction" "column"
-        , style "justify-content" "center"
-        , style "align-items" "center"
-        , style "height" "95vh"
-        , style "width" "95vw"
-        , style "overflow" "hidden"
-        ]
-        (case model.page of
-            Counter state ->
-                [ text ("Hello " ++ state.name)
-                , button [ onClick LogOut ] [ text "Log Out" ]
-                , div []
-                    [ button [ onClick (CountInput (state.count + 1)) ] [ text "+" ]
-                    , div [] [ text (fromInt state.count) ]
-                    , button [ onClick (CountInput (state.count - 1)) ] [ text "-" ]
+    { title = "Example"
+    , body =
+        H.div
+            [ Ha.style "display" "flex"
+            , Ha.style "flex-direction" "column"
+            , Ha.style "justify-content" "center"
+            , Ha.style "align-items" "center"
+            , Ha.style "height" "95vh"
+            , Ha.style "width" "95vw"
+            , Ha.style "overflow" "hidden"
+            ]
+            (case model.page of
+                Counter state ->
+                    [ H.div [] [ H.text ("Hello " ++ state.name) ]
+                    , H.button [ He.onClick LogOut ] [ H.text "Log Out" ]
+                    , H.div []
+                        [ H.button [ He.onClick (CountInput (state.count + 1)) ] [ H.text "+" ]
+                        , H.div [] [ H.text (String.fromInt state.count) ]
+                        , H.button [ He.onClick (CountInput (state.count - 1)) ] [ H.text "-" ]
+                        ]
                     ]
-                ]
 
-            Authentication state ->
-                [ input
-                    [ type_ "text"
-                    , value state.name
-                    , onInput NameInput
+                Authentication state ->
+                    [ H.input
+                        [ Ha.type_ "text"
+                        , Ha.value state.name
+                        , He.onInput NameInput
+                        ]
+                        []
+                    , H.input
+                        [ Ha.type_ "password"
+                        , Ha.value state.pass
+                        , He.onInput PassInput
+                        ]
+                        []
+                    , H.button
+                        [ Ha.disabled (String.length state.pass < 1 || String.length state.name < 1)
+                        , He.onClick LogIn
+                        ]
+                        [ H.text "Log In" ]
                     ]
-                    []
-                , input
-                    [ type_ "password"
-                    , value state.pass
-                    , onInput PassInput
-                    ]
-                    []
-                , button
-                    [ disabled (String.length state.pass < 1 || String.length state.name < 1)
-                    , onClick LogIn
-                    ]
-                    [ text "Log In" ]
-                ]
-        )
+            )
+            :: []
+    }
 
 
 debug =
-    { printMessage = Debug.toString
-    , printModel = Debug.toString
-    , messageDecoder =
-        Decode.oneOf
-            [ Decode.field "NameInput" (Decode.map NameInput Decode.string)
-            , Decode.field "PassInput" (Decode.map PassInput Decode.string)
-            , Decode.field "CountInput" (Decode.map CountInput Decode.int)
-            , Decode.field "LogIn" (Decode.null LogIn)
-            , Decode.field "LogOut" (Decode.null LogOut)
+    { printModel = Debug.toString
+    , outPort = outPort
+    , msgDecoder =
+        Jd.oneOf
+            [ Jd.field "NameInput" (Jd.map NameInput Jd.string)
+            , Jd.field "PassInput" (Jd.map PassInput Jd.string)
+            , Jd.field "CountInput" (Jd.map CountInput Jd.int)
+            , Jd.field "LogIn" (Jd.null LogIn)
+            , Jd.field "LogOut" (Jd.null LogOut)
             ]
-    , encodeMessage =
+    , encodeMsg =
         \msg ->
             case msg of
                 NameInput text ->
-                    Encode.object [ ( "NameInput", Encode.string text ) ]
+                    Je.object [ ( "NameInput", Je.string text ) ]
 
                 PassInput text ->
-                    Encode.object [ ( "PassInput", Encode.string text ) ]
+                    Je.object [ ( "PassInput", Je.string text ) ]
 
                 CountInput count ->
-                    Encode.object [ ( "CountInput", Encode.int count ) ]
+                    Je.object [ ( "CountInput", Je.int count ) ]
 
                 LogIn ->
-                    Encode.object [ ( "LogIn", Encode.null ) ]
+                    Je.object [ ( "LogIn", Je.null ) ]
 
                 LogOut ->
-                    Encode.object [ ( "LogOut", Encode.null ) ]
-    , commands =
-        [ ( "Counter Page"
-          , LogOut
-                :: NameInput "Asger"
-                :: PassInput "Nielsen"
-                :: LogIn
-                :: CountInput 1337
-                :: []
-          )
-        , ( "LogIn Page"
-          , LogOut :: []
-          )
-        ]
+                    Je.object [ ( "LogOut", Je.null ) ]
     }
 
 
 main =
-    Debug.Browser.sandbox
+    Debug.Browser.document
         { init = init
         , update = update
         , view = view
+        , subscriptions = subscriptions
         , debug = debug
         }

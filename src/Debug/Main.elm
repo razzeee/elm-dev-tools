@@ -13,8 +13,7 @@ import Html.Keyed as Hk
 import Html.Lazy as Hl
 import Json.Decode as Jd
 import Json.Encode as Je
-import Position exposing (Position)
-import Process as P
+import Position as P exposing (Position)
 import Size exposing (Size)
 import Svg as S exposing (Svg)
 import Svg.Attributes as Sa
@@ -30,11 +29,10 @@ import ZipList as Zl exposing (ZipList)
 
 
 type alias Config model msg =
-    { printMessage : msg -> String
-    , printModel : model -> String
-    , messageDecoder : Jd.Decoder msg
-    , encodeMessage : msg -> Je.Value
-    , commands : List ( String, List msg )
+    { printModel : model -> String
+    , encodeMsg : msg -> Je.Value
+    , msgDecoder : Jd.Decoder msg
+    , outPort : Je.Value -> Cmd (Msg msg)
     }
 
 
@@ -48,57 +46,76 @@ doNothing =
 
 
 toDocument : ViewConfig model msg (Browser.Document msg) -> Model model msg -> Browser.Document (Msg msg)
-toDocument { printModel, printMessage, commands, view } model =
-    { title = "Debug"
+toDocument { printModel, encodeMsg, view } model =
+    let
+        { title, body } =
+            view (Tuple.second model.updates.current)
+    in
+    { title = title
     , body =
         [ Hl.lazy3
             selectable
             (not model.isDragging)
-            [ toCursorStyle model.isDragging model.hoverable ]
-            (Hl.lazy4 viewDebug printMessage printModel commands model
+            [ toCursorStyle model.isDragging model.hoveredElement ]
+            (Hl.lazy3 viewDebug encodeMsg printModel model
                 :: Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
-                :: List.map (H.map UpdateWith) (.body (view (Tuple.second model.updates.current)))
+                :: List.map (H.map UpdateWith) body
             )
         ]
     }
 
 
 toHtml : ViewConfig model msg (Html msg) -> Model model msg -> Html (Msg msg)
-toHtml { printModel, printMessage, commands, view } model =
+toHtml { printModel, encodeMsg, view } model =
     Hl.lazy3
         selectable
         (not model.isDragging)
-        [ toCursorStyle model.isDragging model.hoverable
+        [ toCursorStyle model.isDragging model.hoveredElement
         ]
-        [ Hl.lazy4 viewDebug printMessage printModel commands model
+        [ Hl.lazy3 viewDebug encodeMsg printModel model
         , Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
         , H.map UpdateWith (Hl.lazy view (Tuple.second model.updates.current))
         ]
 
 
-toInit : ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
-toInit ( model, cmd ) =
-    ( { updates = Zl.singleton ( Nothing, model )
+toInit : Jd.Decoder msg -> Jd.Value -> ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
+toInit msgDecoder flags ( model, cmd ) =
+    case Jd.decodeValue (sessionDecoder msgDecoder model) flags of
+        Ok ( session, msgs ) ->
+            ( session
+            , Cmd.batch
+                [ Cmd.map UpdateWith cmd
+                , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
+                , msgToCmd (BatchMessages session.isSubscribed Nothing msgs)
+                ]
+            )
 
-      -- TODO -- remove the invalid state where
-      -- { model
-      --     | position = { left = 10000, top = 10000 }
-      --     , viewportSize = { width = 0, height = 0 }
-      -- }
-      , position = { left = 10000, top = 10000 }
-      , viewportSize = { width = 0, height = 0 }
-      , layout = Collapsed
-      , isModelOverlayed = False
-      , page = Updates
-      , isDragging = False
-      , hoverable = None
-      , importError = Nothing
-      }
-    , Cmd.batch
-        [ Cmd.map UpdateWith cmd
-        , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
-        ]
-    )
+        Err importError ->
+            ( { updates = Zl.singleton ( Nothing, model )
+
+              {- TODO
+                 remove the invalid state where
+                 { model
+                     | position = { left = 10000, top = 10000 }
+                     , viewportSize = { width = 0, height = 0
+                     }
+              -}
+              , position = { left = 10000, top = 10000 }
+              , viewportSize = { width = 0, height = 0 }
+              , layout = Collapsed
+              , isModelOverlayed = False
+              , isSubscribed = True
+              , notes = ""
+              , page = Updates
+              , isDragging = False
+              , hoveredElement = None
+              , importError = Just importError
+              }
+            , Cmd.batch
+                [ Cmd.map UpdateWith cmd
+                , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
+                ]
+            )
 
 
 toMsg : msg -> Msg msg
@@ -106,151 +123,174 @@ toMsg =
     UpdateWith
 
 
-toSubscriptions : (model -> Sub msg) -> Model model msg -> Sub (Msg msg)
-toSubscriptions subscriptions { updates, position, isDragging } =
+toSubscriptions : SubsConfig model msg -> Model model msg -> Sub (Msg msg)
+toSubscriptions { msgDecoder, subscriptions } { updates, position, isDragging, isSubscribed } =
     Sub.batch
-        [ Sub.map UpdateWith (subscriptions (Tuple.second updates.current))
-        , Be.onResize (Size.map2 ResizeViewport)
-        , subscribeIf isDragging
-            (Sub.batch
-                [ Be.onMouseMove (Jd.map (Drag << To) (Position.mouseMoveDecoder position))
+        [ Be.onResize (Size.map2 ResizeViewport)
+        , subscribeIf isSubscribed <|
+            Sub.map UpdateWith (subscriptions (Tuple.second updates.current))
+        , subscribeIf isDragging <|
+            Sub.batch
+                [ Be.onMouseMove (Jd.map (Drag << To) (P.mouseMoveDecoder position))
                 , Be.onMouseUp (Jd.succeed (Drag Stop))
                 ]
-            )
         ]
 
 
 toUpdate : UpdateConfig model msg -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
-toUpdate { messageDecoder, encodeMessage, update } msg model =
-    case msg of
-        UpdateWith updateMsg ->
-            let
-                ( newModel, cmd ) =
-                    update updateMsg (Tuple.second model.updates.current)
+toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
+    let
+        ( finalModel, finalCmd ) =
+            case msg of
+                UpdateWith updateMsg ->
+                    let
+                        ( newModel, cmd ) =
+                            update updateMsg (Tuple.second model.updates.current)
+                    in
+                    ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, newModel ) model.updates) }
+                    , Cmd.map UpdateWith cmd
+                    )
 
-                updates =
-                    Zl.dropHeads (Zl.insert ( Just updateMsg, newModel ) model.updates)
-            in
-            ( { model | updates = updates }
-            , Cmd.map UpdateWith cmd
-            )
+                SelectUpdateAt index ->
+                    ( { model
+                        | updates = Zl.toIndex index model.updates
+                        , isSubscribed = index == Zl.length model.updates - 1
+                      }
+                    , Cmd.none
+                    )
 
-        SelectUpdateAt index ->
-            ( { model | updates = Zl.toIndex index model.updates }, Cmd.none )
+                SelectPage page ->
+                    ( { model | page = page }, Cmd.none )
 
-        SelectPage page ->
-            ( { model | page = page }, Cmd.none )
+                FileSelected file ->
+                    ( model, Task.perform ImportUpdates (F.toString file) )
 
-        FileSelected file ->
-            ( model, Task.perform ImportUpdates (F.toString file) )
+                ToggleModelOverlay ->
+                    ( { model
+                        | isModelOverlayed = not model.isModelOverlayed
+                      }
+                    , Cmd.none
+                    )
 
-        ToggleModelOverlay ->
-            ( { model
-                | isModelOverlayed = not model.isModelOverlayed
-              }
-            , Cmd.none
-            )
+                ToggleLayout ->
+                    let
+                        position =
+                            P.add model.position <|
+                                P.sub
+                                    (P.fromSize (layoutToSize (toggleLayout model.layout)))
+                                    (P.fromSize (layoutToSize model.layout))
+                    in
+                    ( { model
+                        | layout = toggleLayout model.layout
+                        , isModelOverlayed = model.isModelOverlayed && model.layout == Collapsed
+                        , position = clampToViewport (layoutToSize (toggleLayout model.layout)) model.viewportSize position
+                      }
+                    , Cmd.none
+                    )
 
-        ToggleLayout ->
-            ( { model
-                | layout = toggleLayout model.layout
-                , isModelOverlayed = model.isModelOverlayed && model.layout == Collapsed
-                , position = updatePosition (layoutToSize (toggleLayout model.layout)) model.viewportSize model.position
-              }
-            , Cmd.none
-            )
+                SelectFile ->
+                    ( { model | importError = Nothing }
+                    , Fs.file [ jsonMimeType ] FileSelected
+                    )
 
-        SelectFile ->
-            ( { model | importError = Nothing }
-            , Fs.file [ jsonMimeType ] FileSelected
-            )
+                ResizeViewport viewportSize ->
+                    let
+                        layoutSize =
+                            layoutToSize model.layout
+                    in
+                    ( { model
+                        | viewportSize = viewportSize
+                        , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
+                      }
+                    , Cmd.none
+                    )
 
-        ResizeViewport viewportSize ->
-            let
-                layoutSize =
-                    layoutToSize model.layout
-            in
-            ( { model
-                | viewportSize = viewportSize
-                , position = updatePosition layoutSize { viewportSize | height = layoutSize.height } model.position
-              }
-            , Cmd.none
-            )
+                Hover hoveredElement ->
+                    ( { model | hoveredElement = hoveredElement }, Cmd.none )
 
-        Hover hoverable ->
-            ( { model | hoverable = hoverable }, Cmd.none )
+                Dismiss ->
+                    ( { model
+                        | position =
+                            clampToViewport
+                                (layoutToSize model.layout)
+                                model.viewportSize
+                                { top = 0
+                                , left = model.viewportSize.width
+                                }
+                      }
+                    , Cmd.none
+                    )
 
-        Dismiss ->
-            ( { model
-                | position =
-                    updatePosition
-                        (layoutToSize model.layout)
-                        model.viewportSize
-                        { top = 0
-                        , left = model.viewportSize.width
-                        }
-              }
-            , Cmd.none
-            )
+                InputNotes notes ->
+                    ( { model | notes = notes }, Cmd.none )
 
-        DoNothing ->
-            ( model, Cmd.none )
+                ToggleSubscriptions ->
+                    ( { model | isSubscribed = not model.isSubscribed }, Cmd.none )
 
-        ExportUpdates ->
-            case Zl.filterMap Tuple.first model.updates of
-                Nothing ->
+                DoNothing ->
                     ( model, Cmd.none )
 
-                Just msgZl ->
-                    ( model
-                      -- TODO -- generate appropriate name instead of "elm-debug", based on Browser.Document.title, if available
-                    , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (Zl.jsonEncode encodeMessage msgZl))
-                    )
-
-        Drag Start ->
-            ( { model | isDragging = True }, Cmd.none )
-
-        Drag (To position) ->
-            ( { model
-                | position =
-                    updatePosition
-                        (layoutToSize model.layout)
-                        model.viewportSize
-                        (toRelativeDragButtonPosition position model.layout)
-              }
-            , Cmd.none
-            )
-
-        Drag Stop ->
-            ( { model | isDragging = False }, Cmd.none )
-
-        ImportUpdates text ->
-            case Jd.decodeString (Zl.jsonDecoder messageDecoder) text of
-                Ok updates ->
-                    ( { model | updates = Zl.singleton (Zl.toTail model.updates).current }
-                    , msgToCmd (BatchMessages (Just (Zl.currentIndex updates + 1)) (Zl.toList updates))
-                    )
-
-                Err err ->
-                    ( { model | importError = Just err }, Cmd.none )
-
-        BatchMessages selectIndex msgs ->
-            case msgs of
-                head :: tails ->
-                    ( model
-                    , Cmd.batch
-                        [ msgToCmd (UpdateWith head)
-                        , msgToCmd (BatchMessages selectIndex tails)
-                        ]
-                    )
-
-                [] ->
-                    case selectIndex of
-                        Just index ->
-                            ( model, msgToCmd (SelectUpdateAt index) )
-
+                ExportUpdates ->
+                    case Zl.filterMap Tuple.first model.updates of
                         Nothing ->
                             ( model, Cmd.none )
+
+                        Just msgZl ->
+                            ( model
+                              {- TODO
+                                 generate appropriate name instead of "elm-debug", if available, based on Browser.Document.title
+                              -}
+                            , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (Zl.jsonEncode encodeMsg msgZl))
+                            )
+
+                Drag Start ->
+                    ( { model | isDragging = True }, Cmd.none )
+
+                Drag (To position) ->
+                    ( { model
+                        | position =
+                            clampToViewport
+                                (layoutToSize model.layout)
+                                model.viewportSize
+                                (toRelativeDragButtonPosition position model.layout)
+                      }
+                    , Cmd.none
+                    )
+
+                Drag Stop ->
+                    ( { model | isDragging = False }, Cmd.none )
+
+                ImportUpdates text ->
+                    case Jd.decodeString (Zl.jsonDecoder msgDecoder) text of
+                        Ok updates ->
+                            ( { model | updates = Zl.singleton (Zl.toTail model.updates).current }
+                            , msgToCmd (BatchMessages model.isSubscribed (Just (Zl.currentIndex updates + 1)) (Zl.toList updates))
+                            )
+
+                        Err err ->
+                            ( { model | importError = Just err }, Cmd.none )
+
+                BatchMessages wasSubscribed selectIndex msgs ->
+                    case msgs of
+                        head :: tails ->
+                            ( { model | isSubscribed = False }
+                            , Cmd.batch
+                                [ msgToCmd (UpdateWith head)
+                                , msgToCmd (BatchMessages wasSubscribed selectIndex tails)
+                                ]
+                            )
+
+                        [] ->
+                            case selectIndex of
+                                Just index ->
+                                    ( { model | isSubscribed = wasSubscribed }, msgToCmd (SelectUpdateAt index) )
+
+                                Nothing ->
+                                    ( { model | isSubscribed = wasSubscribed }, Cmd.none )
+    in
+    ( finalModel
+    , Cmd.batch [ finalCmd, outPort (encodeSession encodeMsg finalModel) ]
+    )
 
 
 
@@ -258,7 +298,7 @@ toUpdate { messageDecoder, encodeMessage, update } msg model =
 
 
 type Page
-    = Commands
+    = Notes
     | Updates
 
 
@@ -279,17 +319,20 @@ type Hoverable
     | NavigationButtonFor Page
     | UpdateButtonAt Int
     | CommandButtonAt Int
+    | SubscribeButton
     | None
 
 
 type alias Model model msg =
     { updates : ZipList ( Maybe msg, model )
     , importError : Maybe Jd.Error
+    , notes : String
     , isModelOverlayed : Bool
-    , hoverable : Hoverable
+    , hoveredElement : Hoverable
     , viewportSize : Size
     , position : Position
     , isDragging : Bool
+    , isSubscribed : Bool
     , layout : Layout
     , page : Page
     }
@@ -297,40 +340,222 @@ type alias Model model msg =
 
 type Msg msg
     = UpdateWith msg
-    | SelectUpdateAt Int
-    | SelectPage Page
     | ToggleLayout
     | ToggleModelOverlay
+    | ToggleSubscriptions
+    | SelectFile
     | Drag DragEvent
     | Hover Hoverable
     | ResizeViewport Size
-    | SelectFile
+    | SelectUpdateAt Int
+    | SelectPage Page
     | FileSelected File
     | ImportUpdates String
+    | InputNotes String
     | ExportUpdates
-    | BatchMessages (Maybe Int) (List msg)
+    | BatchMessages Bool (Maybe Int) (List msg)
     | Dismiss
     | DoNothing
 
 
 type alias ViewConfig model msg view =
     { printModel : model -> String
-    , printMessage : msg -> String
-    , commands : List ( String, List msg )
+    , encodeMsg : msg -> Je.Value
     , view : model -> view
     }
 
 
 type alias UpdateConfig model msg =
-    { messageDecoder : Jd.Decoder msg
-    , encodeMessage : msg -> Je.Value
+    { msgDecoder : Jd.Decoder msg
+    , encodeMsg : msg -> Je.Value
     , update : msg -> model -> ( model, Cmd msg )
+    , outPort : Je.Value -> Cmd (Msg msg)
+    }
+
+
+type alias SubsConfig model msg =
+    { msgDecoder : Jd.Decoder msg
+    , subscriptions : model -> Sub msg
     }
 
 
 type Layout
     = Collapsed
     | Expanded
+
+
+viewDebug : (msg -> Je.Value) -> (model -> String) -> Model model msg -> Html (Msg msg)
+viewDebug encodeMsg printModel model =
+    let
+        isExpanded =
+            model.layout == Expanded
+
+        layoutSize =
+            layoutToSize model.layout
+
+        updateCount =
+            Zl.length model.updates
+
+        toUpdateStringTuple index ( msg, mdl ) =
+            ( index
+            , Maybe.withDefault "Init" (Maybe.map (Je.encode 0 << encodeMsg) msg)
+            , printModel mdl
+            )
+    in
+    H.div
+        [ Ha.style "position" "fixed"
+        , Ha.style "z-index" "2147483647"
+        , Ha.style "font-family" "system-ui"
+        , Ha.style "background-color" "white"
+        , Ha.style "border" "1px solid #d3d3d3"
+        , Ha.style "top" (toPx model.position.top)
+        , Ha.style "left" (toPx model.position.left)
+        , Ha.style "width" (toPx (.width layoutSize))
+        , Ha.style "height" (toPx (.height layoutSize))
+        , onRightClick DoNothing
+        ]
+        [ viewIf isExpanded <|
+            viewControls <|
+                [ viewButtons
+                    [ Hl.lazy2 viewSubscribeButton model.hoveredElement model.isSubscribed
+                    , Hl.lazy2 viewOverlayButton model.hoveredElement model.isModelOverlayed
+                    , Hl.lazy2 viewExportButton model.hoveredElement (updateCount > 1)
+                    , Hl.lazy2 viewImportButton model.hoveredElement model.importError
+                    ]
+                , viewDivider
+                , Hl.lazy4 viewNavigationPage 0 Updates model.page model.hoveredElement
+                , Hl.lazy4 viewNavigationPage 1 Notes model.page model.hoveredElement
+                , Hl.lazy viewNavigationUnderline model.page
+                ]
+        , viewIf isExpanded <|
+            {- TODO
+               refactor viewPage to take a record instead of 7 individual args
+            -}
+            Hl.lazy7 viewPage
+                (Zl.currentIndex model.updates)
+                model.hoveredElement
+                model.isSubscribed
+                layoutSize
+                model.page
+                (Zl.toList (Zl.trim 10 (Zl.indexedMap toUpdateStringTuple model.updates)))
+                model.notes
+        , viewControls
+            [ Hl.lazy2 viewSlider updateCount (Zl.currentIndex model.updates)
+            , viewDivider
+            , viewButtons
+                [ Hl.lazy2 viewDragButton model.hoveredElement model.isDragging
+                , Hl.lazy3 viewDismissButton model.hoveredElement layoutSize model.position
+                , Hl.lazy2 viewLayoutButton model.hoveredElement model.layout
+                ]
+            ]
+        ]
+
+
+pageToJson : Page -> Je.Value
+pageToJson page =
+    case page of
+        Updates ->
+            Je.string "updates"
+
+        Notes ->
+            Je.string "notes"
+
+
+pageFromJson : Jd.Decoder Page
+pageFromJson =
+    Jd.andThen
+        (\str ->
+            case str of
+                "updates" ->
+                    Jd.succeed Updates
+
+                "notes" ->
+                    Jd.succeed Notes
+
+                _ ->
+                    Jd.fail ("Failed to decode Page from '" ++ str ++ "'")
+        )
+        Jd.string
+
+
+layoutToJson : Layout -> Je.Value
+layoutToJson layout =
+    case layout of
+        Collapsed ->
+            Je.string "collapsed"
+
+        Expanded ->
+            Je.string "expanded"
+
+
+layoutFromJson : Jd.Decoder Layout
+layoutFromJson =
+    Jd.andThen
+        (\str ->
+            case str of
+                "collapsed" ->
+                    Jd.succeed Collapsed
+
+                "expanded" ->
+                    Jd.succeed Expanded
+
+                _ ->
+                    Jd.fail ("Failed to decode Page from '" ++ str ++ "'")
+        )
+        Jd.string
+
+
+encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
+encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes } =
+    Je.object
+        [ ( "session"
+          , Je.object
+                [ ( "updates", Je.list encodeMsg (List.filterMap Tuple.first (Zl.toList updates)) )
+                , ( "viewportSize", Size.jsonEncode viewportSize )
+                , ( "isModelOverlayed", Je.bool isModelOverlayed )
+                , ( "isSubscribed", Je.bool isSubscribed )
+                , ( "position", P.jsonEncode position )
+                , ( "notes", Je.string notes )
+                , ( "layout", layoutToJson layout )
+                , ( "page", pageToJson page )
+                ]
+          )
+        ]
+
+
+sessionDecoder : Jd.Decoder msg -> model -> Jd.Decoder ( Model model msg, List msg )
+sessionDecoder decodeMsg model =
+    Jd.field "session" <|
+        Jd.map8
+            (\updates viewportSize isModelOverlayed isSubscribed position layout page notes ->
+                ( { updates = Zl.singleton ( Nothing, model )
+                  , isModelOverlayed = isModelOverlayed
+                  , viewportSize = viewportSize
+                  , notes = notes
+                  , importError = Nothing
+                  , position = position
+                  , isDragging = False
+                  , isSubscribed = isSubscribed
+                  , hoveredElement = None
+                  , layout = layout
+                  , page = page
+                  }
+                , updates
+                )
+            )
+            (Jd.field "updates" (Jd.list decodeMsg))
+            (Jd.field "viewportSize" Size.jsonDecoder)
+            (Jd.field "isModelOverlayed" Jd.bool)
+            (Jd.field "isSubscribed" Jd.bool)
+            (Jd.field "position" P.jsonDecoder)
+            (Jd.field "layout" layoutFromJson)
+            (Jd.field "page" pageFromJson)
+            (Jd.field "notes" Jd.string)
+
+
+jsonMimeType : String
+jsonMimeType =
+    "application/json"
 
 
 fit : Int -> String -> String
@@ -342,9 +567,9 @@ fit maxLength text =
         text
 
 
-jsonMimeType : String
-jsonMimeType =
-    "application/json"
+clampToViewport : Size -> Size -> Position -> Position
+clampToViewport size viewportSize position =
+    P.clamp (Position 0 0) viewportSize size position
 
 
 msgToCmd : msg -> Cmd msg
@@ -444,7 +669,7 @@ toRelativeDragButtonPosition { top, left } layout =
 pageToOverflow : Page -> String
 pageToOverflow page =
     case page of
-        Commands ->
+        Notes ->
             "hidden scroll"
 
         Updates ->
@@ -485,13 +710,6 @@ layoutToSize layout =
             { height = 218, width = 180 }
 
 
-updatePosition : Size -> Size -> Position -> Position
-updatePosition debugSize viewportSize debugPosition =
-    { top = clamp 0 (viewportSize.height - debugSize.height) debugPosition.top
-    , left = clamp 0 (viewportSize.width - debugSize.width) debugPosition.left
-    }
-
-
 viewDivider : Html msg
 viewDivider =
     H.div
@@ -509,6 +727,40 @@ viewIcon attributes =
             :: Sa.viewBox "0 0 24 24"
             :: attributes
         )
+
+
+viewSubscribeButton : Hoverable -> Bool -> Html (Msg msg)
+viewSubscribeButton currentHover isSubscribed =
+    let
+        title =
+            if isSubscribed then
+                "Disable subscriptions"
+
+            else
+                "Enable subscriptions"
+
+        fill =
+            if not isSubscribed then
+                "#1cabf1"
+
+            else if currentHover == SubscribeButton then
+                "black"
+
+            else
+                "#7c7c7c"
+    in
+    viewIcon
+        [ Se.onClick ToggleSubscriptions
+        , Se.onMouseOver (Hover SubscribeButton)
+        , Se.onMouseOut (Hover None)
+        ]
+        [ S.path
+            [ Sa.fill fill
+            , Sa.d "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"
+            ]
+            []
+        , S.title [] [ S.text title ]
+        ]
 
 
 viewDragButton : Hoverable -> Bool -> Html (Msg msg)
@@ -589,7 +841,7 @@ viewImportButton currentHover importError =
         , Se.onMouseOut (Hover None)
         ]
         [ S.path
-            [ Sa.d "M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13.5,16V19H10.5V16H8L12,12L16,16H13.5M13,9V3.5L18.5,9H13Z"
+            [ Sa.d "M14,2L20,8V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2H14M18,20V9H13V4H6V20H18M12,12L16,16H13.5V19H10.5V16H8L12,12Z"
             , Sa.fill fill
             ]
             []
@@ -791,52 +1043,37 @@ viewUpdate currentHover currentIndex ( index, msgString, modelString ) =
         ]
 
 
-viewCommand : (msg -> String) -> Hoverable -> Int -> ( String, List msg ) -> Html (Msg msg)
-viewCommand printMsg currentHover index ( label, msgs ) =
-    let
-        this =
-            CommandButtonAt index
-
-        backgroundColor =
-            if CommandButtonAt index == currentHover then
-                "#f5f5f5"
-
-            else
-                "white"
-    in
-    selectable False
-        [ Ha.style "width" "159px"
-        , Ha.style "margin" "3px"
-        , Ha.style "line-height" "18px"
-        , Ha.style "font-size" "9px"
-        , Ha.style "font-weight" "500"
-        , Ha.style "text-align" "center"
-        , Ha.style "border" "1px solid #d3d3d3"
-        , Ha.style "background-color" backgroundColor
-        , Ha.title (listJoin (\a b -> b ++ "\n " ++ a) "" (List.map printMsg msgs))
-        , He.onMouseOver (Hover this)
-        , He.onMouseOut (Hover None)
-        , He.onClick (BatchMessages Nothing msgs)
+viewNotes : String -> Html (Msg msg)
+viewNotes notes =
+    H.textarea
+        [ Ha.style "height" "94%"
+        , Ha.style "width" "94%"
+        , Ha.style "padding" "3%"
+        , Ha.style "border" "0"
+        , Ha.style "outline" "0"
+        , Ha.style "resize" "none"
+        , Ha.placeholder "Describe the debugging session here..."
+        , Ha.value notes
+        , He.onInput InputNotes
         ]
-        [ H.text (fit 16 label)
-        ]
+        []
 
 
-viewPage : Int -> Hoverable -> (msg -> String) -> Size -> Page -> List ( Int, String, String ) -> List ( String, List msg ) -> Html (Msg msg)
-viewPage currentIndex currentHover printMessage layoutSize page updates commands =
+viewPage : Int -> Hoverable -> Bool -> Size -> Page -> List ( Int, String, String ) -> String -> Html (Msg msg)
+viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
     let
         body =
             case page of
                 Updates ->
                     List.map (viewUpdate currentHover currentIndex) updates
 
-                Commands ->
-                    List.indexedMap (viewCommand printMessage currentHover) commands
+                Notes ->
+                    viewNotes notes :: []
     in
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
         , Ha.style "height" (toPx (layoutSize.height - 38))
-        , Ha.style "overflow" (pageToOverflow page)
+        , Ha.style "overflow" "hidden"
         ]
         body
 
@@ -845,7 +1082,7 @@ viewControls : List (Html (Msg msg)) -> Html (Msg msg)
 viewControls =
     H.div
         [ Ha.style "display" "flex"
-        , Ha.style "height" "18px"
+        , Ha.style "height" "20px"
         , Ha.style "background-color" "#f3f3f3"
         , Ha.style "border-bottom" "1px solid #d3d3d3"
         ]
@@ -893,13 +1130,13 @@ viewNavigationPage index page currentPage currentHover =
                 Updates ->
                     "A list of updates"
 
-                Commands ->
-                    "A list of commands"
+                Notes ->
+                    "Notes on the debugging session"
 
         label =
             case page of
-                Commands ->
-                    "Commands"
+                Notes ->
+                    "Notes"
 
                 Updates ->
                     "Updates"
@@ -926,73 +1163,18 @@ viewNavigationUnderline page =
         ( width, transform ) =
             case page of
                 Updates ->
-                    ( 54, "translate(0,0)" )
+                    ( 55, "translate(0,0)" )
 
-                Commands ->
-                    ( 64, "translate(55px,0)" )
+                Notes ->
+                    ( 44, "translate(55px,0)" )
     in
     H.div
         [ Ha.style "position" "absolute"
-        , Ha.style "top" "17px"
-        , Ha.style "left" "48px"
+        , Ha.style "top" "19px"
+        , Ha.style "left" "63px"
         , Ha.style "transition" "transform 140ms ease-out, width 140ms ease-out"
         , Ha.style "border-bottom" "2px solid #1cabf1"
         , Ha.style "width" (toPx width)
         , Ha.style "transform" transform
         ]
         []
-
-
-viewDebug : (msg -> String) -> (model -> String) -> List ( String, List msg ) -> Model model msg -> Html (Msg msg)
-viewDebug printMessage printModel commands model =
-    let
-        isExpanded =
-            model.layout == Expanded
-
-        layoutSize =
-            layoutToSize model.layout
-    in
-    H.div
-        [ Ha.style "position" "fixed"
-        , Ha.style "z-index" "2147483647"
-        , Ha.style "font-family" "system-ui"
-        , Ha.style "background-color" "white"
-        , Ha.style "border" "1px solid #d3d3d3"
-        , Ha.style "top" (toPx model.position.top)
-        , Ha.style "left" (toPx model.position.left)
-        , Ha.style "width" (toPx (.width layoutSize))
-        , Ha.style "height" (toPx (.height layoutSize))
-        , onRightClick DoNothing
-        ]
-        [ viewIf isExpanded <|
-            viewControls <|
-                [ viewButtons
-                    [ Hl.lazy2 viewOverlayButton model.hoverable model.isModelOverlayed
-                    , Hl.lazy2 viewExportButton model.hoverable (Zl.length model.updates > 1)
-                    , Hl.lazy2 viewImportButton model.hoverable model.importError
-                    ]
-                , viewDivider
-                , Hl.lazy4 viewNavigationPage 0 Updates model.page model.hoverable
-                , Hl.lazy4 viewNavigationPage 1 Commands model.page model.hoverable
-                , Hl.lazy viewNavigationUnderline model.page
-                ]
-        , viewIf isExpanded <|
-            -- TODO -- Refactor viewPage to take a record instead of 7 individual args
-            Hl.lazy7 viewPage
-                (Zl.currentIndex model.updates)
-                model.hoverable
-                printMessage
-                layoutSize
-                model.page
-                (Zl.toList (Zl.trim 10 (Zl.indexedMap (\index ( msg, mdl ) -> ( index, Maybe.withDefault "Init" (Maybe.map printMessage msg), printModel mdl )) model.updates)))
-                commands
-        , viewControls
-            [ Hl.lazy2 viewSlider (Zl.length model.updates) (Zl.currentIndex model.updates)
-            , viewDivider
-            , viewButtons
-                [ Hl.lazy2 viewDragButton model.hoverable model.isDragging
-                , Hl.lazy3 viewDismissButton model.hoverable layoutSize model.position
-                , Hl.lazy2 viewLayoutButton model.hoverable model.layout
-                ]
-            ]
-        ]
