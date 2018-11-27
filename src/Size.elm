@@ -1,4 +1,4 @@
-module Size exposing (Size, fromViewport, jsonDecoder, jsonEncode, map2)
+module Size exposing (Size, fromViewport, jsonDecoder, jsonEncode, mapFromInts)
 
 import Browser.Dom exposing (Viewport)
 import Json.Decode as Jd
@@ -18,8 +18,8 @@ fromViewport { viewport } =
     }
 
 
-map2 : (Size -> msg) -> Int -> Int -> msg
-map2 toMsg width height =
+mapFromInts : (Size -> msg) -> Int -> Int -> msg
+mapFromInts toMsg width height =
     toMsg
         { width = width
         , height = height

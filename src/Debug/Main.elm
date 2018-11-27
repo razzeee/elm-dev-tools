@@ -149,7 +149,7 @@ toMsg =
 toSubscriptions : SubsConfig model msg -> Model model msg -> Sub (Msg msg)
 toSubscriptions { msgDecoder, subscriptions } { updates, position, isDragging, isSubscribed } =
     Sub.batch
-        [ Be.onResize (Size.map2 ResizeViewport)
+        [ Be.onResize (Size.mapFromInts ResizeViewport)
         , subscribeIf isSubscribed <|
             Sub.map UpdateWith (subscriptions (Tuple.second updates.current))
         , subscribeIf isDragging <|
