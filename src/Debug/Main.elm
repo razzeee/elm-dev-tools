@@ -78,17 +78,40 @@ toHtml { printModel, encodeMsg, view } model =
         ]
 
 
-toInit : Jd.Decoder msg -> Jd.Value -> ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
-toInit msgDecoder flags ( model, cmd ) =
-    case Jd.decodeValue (sessionDecoder msgDecoder model) flags of
-        Ok ( session, msgs ) ->
-            ( session
-            , Cmd.batch
-                [ Cmd.map UpdateWith cmd
-                , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
-                , msgToCmd (BatchMessages session.isSubscribed Nothing msgs)
-                ]
-            )
+
+{- TODO
+   refactor toInit to take a record instead of individual args.
+-}
+
+
+toInit : (msg -> model -> ( model, Cmd msg )) -> Jd.Decoder msg -> Jd.Value -> ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
+toInit update msgDecoder flags ( model, cmd ) =
+    {- TODO
+        remove the invalid state where sessionDecoder is passed
+       { width = 0, height = 0 }
+
+    -}
+    case Jd.decodeValue (sessionDecoder msgDecoder model { width = 0, height = 0 }) flags of
+        Ok ( session, msgZl ) ->
+            let
+                ( index, msgs ) =
+                    case msgZl of
+                        Just zl ->
+                            ( Zl.currentIndex zl, Zl.toList zl )
+
+                        Nothing ->
+                            ( 0, [] )
+            in
+            updateWith
+                update
+                (List.filterMap identity msgs)
+                index
+                ( session
+                , Cmd.batch
+                    [ Cmd.map UpdateWith cmd
+                    , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
+                    ]
+                )
 
         Err importError ->
             ( { updates = Zl.singleton ( Nothing, model )
@@ -164,7 +187,8 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                 )
 
         SelectPage page ->
-            ( { model | page = page }, Cmd.none )
+            save
+                ( { model | page = page }, Cmd.none )
 
         FileSelected file ->
             ( model, Task.perform ImportSession (F.toString file) )
@@ -204,13 +228,13 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                 layoutSize =
                     layoutToSize model.layout
             in
-            -- save
-            ( { model
-                | viewportSize = viewportSize
-                , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
-              }
-            , Cmd.none
-            )
+            save
+                ( { model
+                    | viewportSize = viewportSize
+                    , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
+                  }
+                , Cmd.none
+                )
 
         Hover hoveredElement ->
             ( { model | hoveredElement = hoveredElement }, Cmd.none )
@@ -272,39 +296,22 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                 ( { model | isDragging = False }, Cmd.none )
 
         ImportSession text ->
-            case Jd.decodeString (sessionDecoder msgDecoder (Tuple.second (Zl.head model.updates))) text of
-                Ok ( session, msgs ) ->
+            case Jd.decodeString (sessionDecoder msgDecoder (Tuple.second (Zl.tail model.updates)) model.viewportSize) text of
+                Ok ( session, msgZl ) ->
+                    let
+                        ( index, msgs ) =
+                            case msgZl of
+                                Just zl ->
+                                    ( Zl.currentIndex zl, Zl.toList zl )
+
+                                Nothing ->
+                                    ( 0, [] )
+                    in
                     save
-                        ( session
-                        , msgToCmd (BatchMessages session.isSubscribed Nothing msgs)
-                        )
+                        (updateWith update (List.filterMap identity msgs) index ( { session | isSubscribed = False }, Cmd.none ))
 
                 Err err ->
                     ( { model | importError = Just err }, Cmd.none )
-
-        BatchMessages wasSubscribed selectIndex msgs ->
-            case msgs of
-                head :: tails ->
-                    ( { model | isSubscribed = False }
-                    , Cmd.batch
-                        [ msgToCmd (UpdateWith head)
-                        , msgToCmd (BatchMessages wasSubscribed selectIndex tails)
-                        ]
-                    )
-
-                [] ->
-                    case selectIndex of
-                        Just index ->
-                            save
-                                ( { model | isSubscribed = wasSubscribed }
-                                , msgToCmd (SelectUpdateAt index)
-                                )
-
-                        Nothing ->
-                            save
-                                ( { model | isSubscribed = wasSubscribed }
-                                , Cmd.none
-                                )
 
 
 
@@ -367,7 +374,6 @@ type Msg msg
     | ImportSession String
     | InputNotes String
     | ExportUpdates
-    | BatchMessages Bool (Maybe Int) (List msg)
     | Dismiss
     | DoNothing
 
@@ -410,10 +416,9 @@ viewDebug encodeMsg printModel model =
         updateCount =
             Zl.length model.updates
 
-        toUpdateStringTuple index ( msg, mdl ) =
+        toUpdateStringTuple index ( msg, _ ) =
             ( index
             , Maybe.withDefault "Init" (Maybe.map (Je.encode 0 << encodeMsg) msg)
-            , printModel mdl
             )
     in
     H.div
@@ -475,6 +480,30 @@ saveSession outPort encodeMsg ( model, cmd ) =
     )
 
 
+updateWith : (msg -> model -> ( model, Cmd msg )) -> List msg -> Int -> ( Model model msg, Cmd (Msg msg) ) -> ( Model model msg, Cmd (Msg msg) )
+updateWith update msgs index ( model, cmd ) =
+    case msgs of
+        updateMsg :: updateMsgs ->
+            let
+                ( updateModel, updateCmd ) =
+                    update updateMsg (Tuple.second model.updates.current)
+            in
+            updateWith update
+                updateMsgs
+                index
+                ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, updateModel ) model.updates) }
+                , Cmd.map UpdateWith updateCmd
+                )
+
+        [] ->
+            ( { model
+                | updates = Zl.toIndex index model.updates
+                , isSubscribed = index == Zl.length model.updates - 1
+              }
+            , Cmd.none
+            )
+
+
 pageToJson : Page -> Je.Value
 pageToJson page =
     case page of
@@ -532,10 +561,10 @@ layoutFromJson =
 encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
 encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes } =
     let
-        maybeUpdates =
-            case Zl.filterMap Tuple.first updates of
-                Just zl ->
-                    Zl.jsonEncode encodeMsg zl
+        encodeMaybeMsg maybeMsg =
+            case maybeMsg of
+                Just msg ->
+                    encodeMsg msg
 
                 Nothing ->
                     Je.null
@@ -543,8 +572,7 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
     Je.object
         [ ( "session"
           , Je.object
-                [ ( "updates", maybeUpdates )
-                , ( "viewportSize", Size.jsonEncode viewportSize )
+                [ ( "updates", Zl.jsonEncode encodeMaybeMsg (Zl.map Tuple.first updates) )
                 , ( "isModelOverlayed", Je.bool isModelOverlayed )
                 , ( "isSubscribed", Je.bool isSubscribed )
                 , ( "position", P.jsonEncode position )
@@ -556,11 +584,11 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
         ]
 
 
-sessionDecoder : Jd.Decoder msg -> model -> Jd.Decoder ( Model model msg, List msg )
-sessionDecoder decodeMsg model =
+sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
+sessionDecoder decodeMsg model viewportSize =
     Jd.field "session" <|
-        Jd.map8
-            (\updates viewportSize isModelOverlayed isSubscribed position layout page notes ->
+        Jd.map7
+            (\updates isModelOverlayed isSubscribed position layout page notes ->
                 ( { updates = Zl.singleton ( Nothing, model )
                   , isModelOverlayed = isModelOverlayed
                   , viewportSize = viewportSize
@@ -573,11 +601,10 @@ sessionDecoder decodeMsg model =
                   , layout = layout
                   , page = page
                   }
-                , Zl.toList updates
+                , updates
                 )
             )
-            (Jd.field "updates" (Zl.jsonDecoder decodeMsg))
-            (Jd.field "viewportSize" Size.jsonDecoder)
+            (Jd.field "updates" (Jd.maybe (Zl.jsonDecoder (Jd.maybe decodeMsg))))
             (Jd.field "isModelOverlayed" Jd.bool)
             (Jd.field "isSubscribed" Jd.bool)
             (Jd.field "position" P.jsonDecoder)
@@ -603,11 +630,6 @@ fit maxLength text =
 clampToViewport : Size -> Size -> Position -> Position
 clampToViewport size viewportSize position =
     P.clamp (Position 0 0) viewportSize size position
-
-
-msgToCmd : msg -> Cmd msg
-msgToCmd =
-    Task.perform identity << Task.succeed
 
 
 toPx : Int -> String
@@ -1029,9 +1051,17 @@ viewSlider length currentIndex =
         ]
 
 
-viewUpdate : Hoverable -> Int -> ( Int, String, String ) -> Html (Msg msg)
-viewUpdate currentHover currentIndex ( index, msgString, modelString ) =
+viewUpdate : Hoverable -> Int -> ( Int, String ) -> Html (Msg msg)
+viewUpdate currentHover currentIndex ( index, json ) =
     let
+        ( text, title ) =
+            case Jd.decodeString (Jd.keyValuePairs Jd.value) json of
+                Ok (( key, value ) :: []) ->
+                    ( key, json )
+
+                _ ->
+                    ( json, "" )
+
         isSelected =
             index == currentIndex
 
@@ -1062,12 +1092,12 @@ viewUpdate currentHover currentIndex ( index, msgString, modelString ) =
         , Ha.style "padding" "0 9px"
         , Ha.style "color" color
         , Ha.style "background-color" backgroundColor
-        , Ha.title (msgString ++ "\n\n" ++ modelString)
+        , Ha.title title
         , He.onClick (SelectUpdateAt index)
         , He.onMouseOver (Hover (UpdateButtonAt index))
         , He.onMouseOut (Hover None)
         ]
-        [ H.text (fit 24 msgString)
+        [ H.text (fit 24 text)
         , H.span
             [ Ha.style "float" "right"
             ]
@@ -1092,7 +1122,7 @@ viewNotes notes =
         []
 
 
-viewPage : Int -> Hoverable -> Bool -> Size -> Page -> List ( Int, String, String ) -> String -> Html (Msg msg)
+viewPage : Int -> Hoverable -> Bool -> Size -> Page -> List ( Int, String ) -> String -> Html (Msg msg)
 viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
     let
         body =

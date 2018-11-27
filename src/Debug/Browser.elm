@@ -49,7 +49,7 @@ type alias ApplicationConfig model msg =
 sandbox : SandboxConfig model msg -> Debug.Main.Program Jd.Value model msg
 sandbox { init, view, update, debug } =
     Browser.document
-        { init = \flags -> Debug.Main.toInit debug.msgDecoder flags ( init, Cmd.none )
+        { init = \flags -> Debug.Main.toInit (\msg model -> ( update msg model, Cmd.none )) debug.msgDecoder flags ( init, Cmd.none )
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel
@@ -74,7 +74,7 @@ sandbox { init, view, update, debug } =
 element : ElementConfig model msg -> Debug.Main.Program Jd.Value model msg
 element { init, view, update, subscriptions, debug } =
     Browser.element
-        { init = \flags -> Debug.Main.toInit debug.msgDecoder flags (init flags)
+        { init = \flags -> Debug.Main.toInit update debug.msgDecoder flags (init flags)
         , view =
             Debug.Main.toHtml
                 { printModel = debug.printModel
@@ -99,7 +99,7 @@ element { init, view, update, subscriptions, debug } =
 document : DocumentConfig model msg -> Debug.Main.Program Jd.Value model msg
 document { init, view, update, subscriptions, debug } =
     Browser.document
-        { init = \flags -> Debug.Main.toInit debug.msgDecoder flags (init flags)
+        { init = \flags -> Debug.Main.toInit update debug.msgDecoder flags (init flags)
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel
@@ -124,7 +124,7 @@ document { init, view, update, subscriptions, debug } =
 application : ApplicationConfig model msg -> Debug.Main.Program Jd.Value model msg
 application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debug } =
     Browser.application
-        { init = \flags url key -> Debug.Main.toInit debug.msgDecoder flags (init flags url key)
+        { init = \flags url key -> Debug.Main.toInit update debug.msgDecoder flags (init flags url key)
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel

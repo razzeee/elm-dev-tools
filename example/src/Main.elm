@@ -7,6 +7,7 @@ import Html.Attributes as Ha
 import Html.Events as He
 import Json.Decode as Jd
 import Json.Encode as Je
+import Time
 
 
 port outPort : Jd.Value -> Cmd msg
@@ -54,7 +55,12 @@ update msg model =
 
 
 subscriptions model =
-    Sub.none
+    case model.page of
+        Counter state ->
+            Time.every 50 (always (CountInput (state.count + 1)))
+
+        _ ->
+            Sub.none
 
 
 view model =
