@@ -140,157 +140,171 @@ toSubscriptions { msgDecoder, subscriptions } { updates, position, isDragging, i
 toUpdate : UpdateConfig model msg -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
 toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
     let
-        ( finalModel, finalCmd ) =
-            case msg of
-                UpdateWith updateMsg ->
-                    let
-                        ( newModel, cmd ) =
-                            update updateMsg (Tuple.second model.updates.current)
-                    in
-                    ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, newModel ) model.updates) }
-                    , Cmd.map UpdateWith cmd
-                    )
+        save =
+            saveSession outPort encodeMsg
+    in
+    case msg of
+        UpdateWith updateMsg ->
+            let
+                ( updateModel, updateCmd ) =
+                    update updateMsg (Tuple.second model.updates.current)
+            in
+            save
+                ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, updateModel ) model.updates) }
+                , Cmd.map UpdateWith updateCmd
+                )
 
-                SelectUpdateAt index ->
-                    ( { model
-                        | updates = Zl.toIndex index model.updates
-                        , isSubscribed = index == Zl.length model.updates - 1
-                      }
-                    , Cmd.none
-                    )
+        SelectUpdateAt index ->
+            save
+                ( { model
+                    | updates = Zl.toIndex index model.updates
+                    , isSubscribed = index == Zl.length model.updates - 1
+                  }
+                , Cmd.none
+                )
 
-                SelectPage page ->
-                    ( { model | page = page }, Cmd.none )
+        SelectPage page ->
+            ( { model | page = page }, Cmd.none )
 
-                FileSelected file ->
-                    ( model, Task.perform ImportUpdates (F.toString file) )
+        FileSelected file ->
+            ( model, Task.perform ImportSession (F.toString file) )
 
-                ToggleModelOverlay ->
-                    ( { model
-                        | isModelOverlayed = not model.isModelOverlayed
-                      }
-                    , Cmd.none
-                    )
+        ToggleModelOverlay ->
+            save
+                ( { model
+                    | isModelOverlayed = not model.isModelOverlayed
+                  }
+                , Cmd.none
+                )
 
-                ToggleLayout ->
-                    let
-                        position =
-                            P.add model.position <|
-                                P.sub
-                                    (P.fromSize (layoutToSize (toggleLayout model.layout)))
-                                    (P.fromSize (layoutToSize model.layout))
-                    in
-                    ( { model
-                        | layout = toggleLayout model.layout
-                        , isModelOverlayed = model.isModelOverlayed && model.layout == Collapsed
-                        , position = clampToViewport (layoutToSize (toggleLayout model.layout)) model.viewportSize position
-                      }
-                    , Cmd.none
-                    )
+        ToggleLayout ->
+            let
+                position =
+                    P.add model.position <|
+                        P.sub
+                            (P.fromSize (layoutToSize (toggleLayout model.layout)))
+                            (P.fromSize (layoutToSize model.layout))
+            in
+            save
+                ( { model
+                    | layout = toggleLayout model.layout
+                    , isModelOverlayed = model.isModelOverlayed && model.layout == Collapsed
+                    , position = clampToViewport (layoutToSize (toggleLayout model.layout)) model.viewportSize position
+                  }
+                , Cmd.none
+                )
 
-                SelectFile ->
-                    ( { model | importError = Nothing }
-                    , Fs.file [ jsonMimeType ] FileSelected
-                    )
+        SelectFile ->
+            ( { model | importError = Nothing }
+            , Fs.file [ jsonMimeType ] FileSelected
+            )
 
-                ResizeViewport viewportSize ->
-                    let
-                        layoutSize =
-                            layoutToSize model.layout
-                    in
-                    ( { model
-                        | viewportSize = viewportSize
-                        , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
-                      }
-                    , Cmd.none
-                    )
+        ResizeViewport viewportSize ->
+            let
+                layoutSize =
+                    layoutToSize model.layout
+            in
+            -- save
+            ( { model
+                | viewportSize = viewportSize
+                , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
+              }
+            , Cmd.none
+            )
 
-                Hover hoveredElement ->
-                    ( { model | hoveredElement = hoveredElement }, Cmd.none )
+        Hover hoveredElement ->
+            ( { model | hoveredElement = hoveredElement }, Cmd.none )
 
-                Dismiss ->
-                    ( { model
-                        | position =
-                            clampToViewport
-                                (layoutToSize model.layout)
-                                model.viewportSize
-                                { top = 0
-                                , left = model.viewportSize.width
-                                }
-                      }
-                    , Cmd.none
-                    )
+        Dismiss ->
+            save
+                ( { model
+                    | position =
+                        clampToViewport
+                            (layoutToSize model.layout)
+                            model.viewportSize
+                            { top = 0
+                            , left = model.viewportSize.width
+                            }
+                  }
+                , Cmd.none
+                )
 
-                InputNotes notes ->
-                    ( { model | notes = notes }, Cmd.none )
+        InputNotes notes ->
+            save
+                ( { model | notes = notes }, Cmd.none )
 
-                ToggleSubscriptions ->
-                    ( { model | isSubscribed = not model.isSubscribed }, Cmd.none )
+        ToggleSubscriptions ->
+            save
+                ( { model | isSubscribed = not model.isSubscribed }, Cmd.none )
 
-                DoNothing ->
+        DoNothing ->
+            ( model, Cmd.none )
+
+        ExportUpdates ->
+            case Zl.filterMap Tuple.first model.updates of
+                Nothing ->
                     ( model, Cmd.none )
 
-                ExportUpdates ->
-                    case Zl.filterMap Tuple.first model.updates of
-                        Nothing ->
-                            ( model, Cmd.none )
-
-                        Just msgZl ->
-                            ( model
-                              {- TODO
-                                 generate appropriate name instead of "elm-debug", if available, based on Browser.Document.title
-                              -}
-                            , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (Zl.jsonEncode encodeMsg msgZl))
-                            )
-
-                Drag Start ->
-                    ( { model | isDragging = True }, Cmd.none )
-
-                Drag (To position) ->
-                    ( { model
-                        | position =
-                            clampToViewport
-                                (layoutToSize model.layout)
-                                model.viewportSize
-                                (toRelativeDragButtonPosition position model.layout)
-                      }
-                    , Cmd.none
+                Just msgZl ->
+                    ( model
+                      {- TODO
+                         generate appropriate name instead of "elm-debug", if available, based on Browser.Document.title
+                      -}
+                    , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (encodeSession encodeMsg model))
                     )
 
-                Drag Stop ->
-                    ( { model | isDragging = False }, Cmd.none )
+        Drag Start ->
+            ( { model | isDragging = True }, Cmd.none )
 
-                ImportUpdates text ->
-                    case Jd.decodeString (Zl.jsonDecoder msgDecoder) text of
-                        Ok updates ->
-                            ( { model | updates = Zl.singleton (Zl.toTail model.updates).current }
-                            , msgToCmd (BatchMessages model.isSubscribed (Just (Zl.currentIndex updates + 1)) (Zl.toList updates))
-                            )
+        Drag (To position) ->
+            ( { model
+                | position =
+                    clampToViewport
+                        (layoutToSize model.layout)
+                        model.viewportSize
+                        (toRelativeDragButtonPosition position model.layout)
+              }
+            , Cmd.none
+            )
 
-                        Err err ->
-                            ( { model | importError = Just err }, Cmd.none )
+        Drag Stop ->
+            save
+                ( { model | isDragging = False }, Cmd.none )
 
-                BatchMessages wasSubscribed selectIndex msgs ->
-                    case msgs of
-                        head :: tails ->
-                            ( { model | isSubscribed = False }
-                            , Cmd.batch
-                                [ msgToCmd (UpdateWith head)
-                                , msgToCmd (BatchMessages wasSubscribed selectIndex tails)
-                                ]
-                            )
+        ImportSession text ->
+            case Jd.decodeString (sessionDecoder msgDecoder (Tuple.second (Zl.head model.updates))) text of
+                Ok ( session, msgs ) ->
+                    save
+                        ( session
+                        , msgToCmd (BatchMessages session.isSubscribed Nothing msgs)
+                        )
 
-                        [] ->
-                            case selectIndex of
-                                Just index ->
-                                    ( { model | isSubscribed = wasSubscribed }, msgToCmd (SelectUpdateAt index) )
+                Err err ->
+                    ( { model | importError = Just err }, Cmd.none )
 
-                                Nothing ->
-                                    ( { model | isSubscribed = wasSubscribed }, Cmd.none )
-    in
-    ( finalModel
-    , Cmd.batch [ finalCmd, outPort (encodeSession encodeMsg finalModel) ]
-    )
+        BatchMessages wasSubscribed selectIndex msgs ->
+            case msgs of
+                head :: tails ->
+                    ( { model | isSubscribed = False }
+                    , Cmd.batch
+                        [ msgToCmd (UpdateWith head)
+                        , msgToCmd (BatchMessages wasSubscribed selectIndex tails)
+                        ]
+                    )
+
+                [] ->
+                    case selectIndex of
+                        Just index ->
+                            save
+                                ( { model | isSubscribed = wasSubscribed }
+                                , msgToCmd (SelectUpdateAt index)
+                                )
+
+                        Nothing ->
+                            save
+                                ( { model | isSubscribed = wasSubscribed }
+                                , Cmd.none
+                                )
 
 
 
@@ -350,7 +364,7 @@ type Msg msg
     | SelectUpdateAt Int
     | SelectPage Page
     | FileSelected File
-    | ImportUpdates String
+    | ImportSession String
     | InputNotes String
     | ExportUpdates
     | BatchMessages Bool (Maybe Int) (List msg)
@@ -451,6 +465,16 @@ viewDebug encodeMsg printModel model =
         ]
 
 
+saveSession : (Je.Value -> Cmd (Msg msg)) -> (msg -> Je.Value) -> ( Model model msg, Cmd (Msg msg) ) -> ( Model model msg, Cmd (Msg msg) )
+saveSession outPort encodeMsg ( model, cmd ) =
+    ( model
+    , Cmd.batch
+        [ cmd
+        , outPort (encodeSession encodeMsg model)
+        ]
+    )
+
+
 pageToJson : Page -> Je.Value
 pageToJson page =
     case page of
@@ -507,10 +531,19 @@ layoutFromJson =
 
 encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
 encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes } =
+    let
+        maybeUpdates =
+            case Zl.filterMap Tuple.first updates of
+                Just zl ->
+                    Zl.jsonEncode encodeMsg zl
+
+                Nothing ->
+                    Je.null
+    in
     Je.object
         [ ( "session"
           , Je.object
-                [ ( "updates", Je.list encodeMsg (List.filterMap Tuple.first (Zl.toList updates)) )
+                [ ( "updates", maybeUpdates )
                 , ( "viewportSize", Size.jsonEncode viewportSize )
                 , ( "isModelOverlayed", Je.bool isModelOverlayed )
                 , ( "isSubscribed", Je.bool isSubscribed )
@@ -540,10 +573,10 @@ sessionDecoder decodeMsg model =
                   , layout = layout
                   , page = page
                   }
-                , updates
+                , Zl.toList updates
                 )
             )
-            (Jd.field "updates" (Jd.list decodeMsg))
+            (Jd.field "updates" (Zl.jsonDecoder decodeMsg))
             (Jd.field "viewportSize" Size.jsonDecoder)
             (Jd.field "isModelOverlayed" Jd.bool)
             (Jd.field "isSubscribed" Jd.bool)

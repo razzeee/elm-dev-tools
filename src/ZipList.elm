@@ -7,6 +7,7 @@ module ZipList exposing
     , dropHeads
     , filterMap
     , forward
+    , head
     , indexedMap
     , insert
     , jsonDecoder
@@ -14,6 +15,7 @@ module ZipList exposing
     , length
     , map
     , singleton
+    , tail
     , toHead
     , toIndex
     , toList
@@ -25,11 +27,25 @@ import Json.Decode as Jd
 import Json.Encode as Je
 
 
+
+-- API
+
+
 type alias ZipList value =
     { heads : List value
     , current : value
     , tails : List value
     }
+
+
+tail : ZipList value -> value
+tail zl =
+    Maybe.withDefault zl.current (tailValue zl.tails)
+
+
+head : ZipList value -> value
+head zl =
+    Maybe.withDefault zl.current (tailValue zl.heads)
 
 
 trim : Int -> ZipList value -> ZipList value
@@ -67,17 +83,17 @@ filterMap op zl =
                 , tails = List.filterMap op zl.tails
                 }
 
-        ( Nothing, Just head, _ ) ->
+        ( Nothing, Just value, _ ) ->
             Just
                 { heads = List.filterMap op (Maybe.withDefault [] (List.tail zl.heads))
-                , current = head
+                , current = value
                 , tails = List.filterMap op zl.tails
                 }
 
-        ( Nothing, _, Just tail ) ->
+        ( Nothing, _, Just value ) ->
             Just
                 { heads = List.filterMap op zl.heads
-                , current = tail
+                , current = value
                 , tails = List.filterMap op (Maybe.withDefault [] (List.tail zl.tails))
                 }
 
@@ -227,3 +243,24 @@ jsonDecoder valueDecoder =
         (Jd.field "heads" (Jd.list valueDecoder))
         (Jd.field "current" valueDecoder)
         (Jd.field "tails" (Jd.list valueDecoder))
+
+
+
+-- Internals
+
+
+tailValue : List value -> Maybe value
+tailValue list =
+    case list of
+        value :: [] ->
+            Just value
+
+        _ :: values ->
+            tailValue values
+
+        [] ->
+            Nothing
+
+
+
+--
