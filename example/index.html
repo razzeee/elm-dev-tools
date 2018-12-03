@@ -16,7 +16,8 @@
 
         try {
             session = JSON.parse(localStorage.getItem("elm-debug"))
-        } catch (_) {
+        }
+        catch (_) {
             console.log("parse failed")
         }
 
@@ -29,7 +30,6 @@
 
         example.ports.outPort.subscribe(function (output) {
             if (output.session) {
-
                 localStorage.setItem("elm-debug", JSON.stringify(output.session))
             }
         })

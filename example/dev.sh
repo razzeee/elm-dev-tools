@@ -1,3 +1,3 @@
 #!/bin/sh
 
-nodemon -e elm --exec "elm make src/Main.elm --output=dist/index.js" & live-server --wait=200
+nodemon --watch ../src --watch src --ext elm --exec "elm make src/Main.elm --output=dist/index.js" & live-server --watch=./dist
