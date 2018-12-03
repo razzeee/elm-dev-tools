@@ -78,14 +78,8 @@ toHtml { printModel, encodeMsg, view } model =
         ]
 
 
-
-{- TODO
-   refactor toInit to take a record instead of individual args.
--}
-
-
-toInit : (msg -> model -> ( model, Cmd msg )) -> Jd.Decoder msg -> Jd.Value -> ( model, Cmd msg ) -> ( Model model msg, Cmd (Msg msg) )
-toInit update msgDecoder flags ( model, cmd ) =
+toInit : InitConfig model msg -> ( Model model msg, Cmd (Msg msg) )
+toInit { update, msgDecoder, flags, model, cmd } =
     {- TODO
         remove the invalid state where sessionDecoder is passed
        { width = 0, height = 0 }
@@ -231,7 +225,7 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
             save
                 ( { model
                     | viewportSize = viewportSize
-                    , position = clampToViewport layoutSize { viewportSize | height = layoutSize.height } model.position
+                    , position = clampToViewport layoutSize viewportSize model.position
                   }
                 , Cmd.none
                 )
@@ -376,6 +370,15 @@ type Msg msg
     | ExportUpdates
     | Dismiss
     | DoNothing
+
+
+type alias InitConfig model msg =
+    { update : msg -> model -> ( model, Cmd msg )
+    , msgDecoder : Jd.Decoder msg
+    , flags : Jd.Value
+    , model : model
+    , cmd : Cmd msg
+    }
 
 
 type alias ViewConfig model msg view =

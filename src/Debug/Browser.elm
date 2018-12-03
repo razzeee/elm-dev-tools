@@ -49,12 +49,20 @@ type alias ApplicationConfig model msg =
 sandbox : SandboxConfig model msg -> Debug.Main.Program Jd.Value model msg
 sandbox { init, view, update, debug } =
     Browser.document
-        { init = \flags -> Debug.Main.toInit (\msg model -> ( update msg model, Cmd.none )) debug.msgDecoder flags ( init, Cmd.none )
+        { init =
+            \flags ->
+                Debug.Main.toInit
+                    { update = \msg model -> ( update msg model, Cmd.none )
+                    , msgDecoder = debug.msgDecoder
+                    , flags = flags
+                    , model = init
+                    , cmd = Cmd.none
+                    }
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel
                 , encodeMsg = debug.encodeMsg
-                , view = \model -> { title = "Elm Debug", body = view model :: [] }
+                , view = \model -> { title = "", body = view model :: [] }
                 }
         , update =
             Debug.Main.toUpdate
@@ -74,7 +82,19 @@ sandbox { init, view, update, debug } =
 element : ElementConfig model msg -> Debug.Main.Program Jd.Value model msg
 element { init, view, update, subscriptions, debug } =
     Browser.element
-        { init = \flags -> Debug.Main.toInit update debug.msgDecoder flags (init flags)
+        { init =
+            \flags ->
+                let
+                    ( model, cmd ) =
+                        init flags
+                in
+                Debug.Main.toInit
+                    { update = update
+                    , msgDecoder = debug.msgDecoder
+                    , flags = flags
+                    , model = model
+                    , cmd = cmd
+                    }
         , view =
             Debug.Main.toHtml
                 { printModel = debug.printModel
@@ -99,7 +119,19 @@ element { init, view, update, subscriptions, debug } =
 document : DocumentConfig model msg -> Debug.Main.Program Jd.Value model msg
 document { init, view, update, subscriptions, debug } =
     Browser.document
-        { init = \flags -> Debug.Main.toInit update debug.msgDecoder flags (init flags)
+        { init =
+            \flags ->
+                let
+                    ( model, cmd ) =
+                        init flags
+                in
+                Debug.Main.toInit
+                    { update = update
+                    , msgDecoder = debug.msgDecoder
+                    , flags = flags
+                    , model = model
+                    , cmd = cmd
+                    }
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel
@@ -124,7 +156,19 @@ document { init, view, update, subscriptions, debug } =
 application : ApplicationConfig model msg -> Debug.Main.Program Jd.Value model msg
 application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debug } =
     Browser.application
-        { init = \flags url key -> Debug.Main.toInit update debug.msgDecoder flags (init flags url key)
+        { init =
+            \flags url key ->
+                let
+                    ( model, cmd ) =
+                        init flags url key
+                in
+                Debug.Main.toInit
+                    { update = update
+                    , msgDecoder = debug.msgDecoder
+                    , flags = flags
+                    , model = model
+                    , cmd = cmd
+                    }
         , view =
             Debug.Main.toDocument
                 { printModel = debug.printModel
