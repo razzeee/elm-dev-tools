@@ -495,7 +495,10 @@ updateWith update msgs index ( model, cmd ) =
                 updateMsgs
                 index
                 ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, updateModel ) model.updates) }
-                , Cmd.map UpdateWith updateCmd
+                , Cmd.batch
+                    [ cmd
+                    , Cmd.map UpdateWith updateCmd
+                    ]
                 )
 
         [] ->
@@ -503,7 +506,7 @@ updateWith update msgs index ( model, cmd ) =
                 | updates = Zl.toIndex index model.updates
                 , isSubscribed = index == Zl.length model.updates - 1
               }
-            , Cmd.none
+            , cmd
             )
 
 
