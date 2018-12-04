@@ -586,6 +586,9 @@ layoutFromJson =
 
 encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
 encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes, sessionTitle } =
+    {- TODO
+       unreadable code - refactor it.
+    -}
     let
         encodeMaybeMsg maybeMsg =
             case maybeMsg of
@@ -615,6 +618,9 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
 
 sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
 sessionDecoder decodeMsg model viewportSize =
+    {- TODO
+       unreadable code - refactor it.
+    -}
     let
         sessionDecoderHelper =
             Jd.map8
