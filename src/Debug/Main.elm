@@ -1165,7 +1165,7 @@ viewNotes sessionTitle notes =
             , Ha.style "outline" "0"
             , Ha.style "display" "block"
             , Ha.style "padding" "5px"
-            , Ha.style "height" "146px"
+            , Ha.style "height" "149px"
             , Ha.style "width" "170px"
             , Ha.style "resize" "none"
             , Ha.placeholder """You can export this session to a file and send it as a bug-report.
