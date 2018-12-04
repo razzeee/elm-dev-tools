@@ -438,12 +438,10 @@ viewDebug encodeMsg printModel model =
         ]
         [ viewIf isExpanded <|
             viewControls <|
-                [ viewButtons
-                    [ Hl.lazy2 viewSubscribeButton model.hoveredElement model.isSubscribed
-                    , Hl.lazy2 viewOverlayButton model.hoveredElement model.isModelOverlayed
-                    , Hl.lazy2 viewExportButton model.hoveredElement (updateCount > 1)
-                    , Hl.lazy2 viewImportButton model.hoveredElement model.importError
-                    ]
+                [ Hl.lazy2 viewOverlayButton model.hoveredElement model.isModelOverlayed
+                , Hl.lazy2 viewSubscribeButton model.hoveredElement model.isSubscribed
+                , Hl.lazy2 viewExportButton model.hoveredElement (updateCount > 1)
+                , Hl.lazy2 viewImportButton model.hoveredElement model.importError
                 , viewDivider
                 , Hl.lazy4 viewNavigationPage 0 Updates model.page model.hoveredElement
                 , Hl.lazy4 viewNavigationPage 1 Notes model.page model.hoveredElement
@@ -464,11 +462,9 @@ viewDebug encodeMsg printModel model =
         , viewControls
             [ Hl.lazy2 viewSlider updateCount (Zl.currentIndex model.updates)
             , viewDivider
-            , viewButtons
-                [ Hl.lazy2 viewDragButton model.hoveredElement model.isDragging
-                , Hl.lazy3 viewDismissButton model.hoveredElement layoutSize model.position
-                , Hl.lazy2 viewLayoutButton model.hoveredElement model.layout
-                ]
+            , Hl.lazy2 viewDragButton model.hoveredElement model.isDragging
+            , Hl.lazy3 viewDismissButton model.hoveredElement layoutSize model.position
+            , Hl.lazy2 viewLayoutButton model.hoveredElement model.layout
             ]
         ]
 
@@ -716,14 +712,14 @@ toggleLayout layout =
 
 toRelativeDragButtonPosition : Position -> Layout -> Position
 toRelativeDragButtonPosition { top, left } layout =
-    { left = left - 137
+    { left = left - 136
     , top =
         case layout of
             Expanded ->
-                top - 207
+                top - 210
 
             Collapsed ->
-                top - 9
+                top - 10
     }
 
 
@@ -765,17 +761,18 @@ layoutToSize : Layout -> Size
 layoutToSize layout =
     case layout of
         Collapsed ->
-            { height = 18, width = 180 }
+            { height = 20, width = 180 }
 
         Expanded ->
-            { height = 218, width = 180 }
+            { height = 222, width = 180 }
 
 
 viewDivider : Html msg
 viewDivider =
     H.div
         [ Ha.style "border-left" "1px solid #d3d3d3"
-        , Ha.style "margin" "3px 0 4px 0"
+        , Ha.style "height" "13px"
+        , Ha.style "margin" "1px 5px"
         ]
         []
 
@@ -817,7 +814,7 @@ viewSubscribeButton currentHover isSubscribed =
         ]
         [ S.path
             [ Sa.fill fill
-            , Sa.d "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"
+            , Sa.d "M14,19H18V5H14M6,19H10V5H6V19Z"
             ]
             []
         , S.title [] [ S.text title ]
@@ -1037,46 +1034,43 @@ viewOverlay viewportSize text =
 
 viewSlider : Int -> Int -> Html (Msg msg)
 viewSlider length currentIndex =
-    H.div
-        [ Ha.title "Scroll to other states"
+    H.input
+        [ Ha.style "margin" "0"
+        , Ha.style "height" "15px"
+        , Ha.style "width" "114px"
+        , Ha.type_ "range"
+        , Ha.title "Scroll to other states"
+        , Ha.min (String.fromInt 0)
+        , Ha.disabled (length == 1)
+        , Ha.max (String.fromInt (length - 1))
+        , Ha.value (String.fromInt currentIndex)
+        , He.onInput (SelectUpdateAt << Maybe.withDefault 0 << String.toInt)
+        , He.onMouseOver (Hover UpdateSlider)
+        , He.onMouseOut (Hover None)
         ]
-        [ H.input
-            [ Ha.style "margin" "0 5%"
-            , Ha.style "width" "90%"
-            , Ha.style "height" "18px"
-            , Ha.type_ "range"
-            , Ha.min (String.fromInt 0)
-            , Ha.disabled (length == 1)
-            , Ha.max (String.fromInt (length - 1))
-            , Ha.value (String.fromInt currentIndex)
-            , He.onInput (SelectUpdateAt << Maybe.withDefault 0 << String.toInt)
-            , He.onMouseOver (Hover UpdateSlider)
-            , He.onMouseOut (Hover None)
-            ]
-            []
-        ]
+        []
 
 
 viewUpdate : Hoverable -> Int -> ( Int, String ) -> Html (Msg msg)
 viewUpdate currentHover currentIndex ( index, json ) =
     let
-        ( text, title ) =
+        ( text, sub, title ) =
             case Jd.decodeString (Jd.keyValuePairs Jd.value) json of
-                Ok (( key, value ) :: []) ->
-                    ( key, json )
+                Ok (( msg, params ) :: []) ->
+                    ( msg, Je.encode 0 params, json )
 
                 _ ->
-                    ( json, "" )
+                    ( json, "", "" )
 
         isSelected =
             index == currentIndex
 
-        color =
+        ( color, subColor ) =
             if isSelected then
-                "white"
+                ( "white", "white" )
 
             else
-                "black"
+                ( "black", "gray" )
 
         backgroundColor =
             if isSelected then
@@ -1093,9 +1087,9 @@ viewUpdate currentHover currentIndex ( index, json ) =
     in
     selectable False
         [ Ha.style "height" "18px"
+        , Ha.style "padding" "0 5px"
         , Ha.style "line-height" "18px"
-        , Ha.style "font-size" "8px"
-        , Ha.style "padding" "0 9px"
+        , Ha.style "font-size" "9px"
         , Ha.style "color" color
         , Ha.style "background-color" backgroundColor
         , Ha.title title
@@ -1104,6 +1098,12 @@ viewUpdate currentHover currentIndex ( index, json ) =
         , He.onMouseOut (Hover None)
         ]
         [ H.text (fit 24 text)
+        , H.span
+            [ Ha.style "color" subColor
+            , Ha.style "padding-left" "5px"
+            ]
+            [ H.text (fit 12 (String.join "" (String.split "null" sub)))
+            ]
         , H.span
             [ Ha.style "float" "right"
             ]
@@ -1115,11 +1115,12 @@ viewUpdate currentHover currentIndex ( index, json ) =
 viewNotes : String -> Html (Msg msg)
 viewNotes notes =
     H.textarea
-        [ Ha.style "height" "94%"
-        , Ha.style "width" "94%"
-        , Ha.style "padding" "3%"
-        , Ha.style "border" "0"
+        [ Ha.style "border" "0"
         , Ha.style "outline" "0"
+        , Ha.style "display" "block"
+        , Ha.style "padding" "5px"
+        , Ha.style "height" "170px"
+        , Ha.style "width" "170px"
         , Ha.style "resize" "none"
         , Ha.placeholder "Describe the debugging session here..."
         , Ha.value notes
@@ -1141,7 +1142,6 @@ viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
     in
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
-        , Ha.style "height" (toPx (layoutSize.height - 38))
         , Ha.style "overflow" "hidden"
         ]
         body
@@ -1150,18 +1150,12 @@ viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
 viewControls : List (Html (Msg msg)) -> Html (Msg msg)
 viewControls =
     H.div
-        [ Ha.style "display" "flex"
-        , Ha.style "height" "20px"
+        [ Ha.style "height" "20px"
+        , Ha.style "display" "flex"
+        , Ha.style "padding" "0 5px"
+        , Ha.style "align-items" "center"
         , Ha.style "background-color" "#f3f3f3"
         , Ha.style "border-bottom" "1px solid #d3d3d3"
-        ]
-
-
-viewButtons : List (Html (Msg msg)) -> Html (Msg msg)
-viewButtons =
-    H.div
-        [ Ha.style "display" "flex"
-        , Ha.style "margin" "1px"
         ]
 
 
@@ -1211,10 +1205,10 @@ viewNavigationPage index page currentPage currentHover =
                     "Updates"
     in
     selectable False
-        [ Ha.style "height" "18px"
-        , Ha.style "line-height" "18px"
-        , Ha.style "font-size" "9px"
-        , Ha.style "padding" "0 9px"
+        [ Ha.style "font-size" "9px"
+        , Ha.style "height" "20px"
+        , Ha.style "line-height" "20px"
+        , Ha.style "padding" "0 6.5px"
         , Ha.style "background-color" backgroundColor
         , Ha.style "color" color
         , Ha.title title
@@ -1232,15 +1226,15 @@ viewNavigationUnderline page =
         ( width, transform ) =
             case page of
                 Updates ->
-                    ( 55, "translate(0,0)" )
+                    ( 50, "translate(0,0)" )
 
                 Notes ->
-                    ( 44, "translate(55px,0)" )
+                    ( 39, "translate(50px,0)" )
     in
     H.div
         [ Ha.style "position" "absolute"
         , Ha.style "top" "19px"
-        , Ha.style "left" "63px"
+        , Ha.style "left" "76px"
         , Ha.style "transition" "transform 140ms ease-out, width 140ms ease-out"
         , Ha.style "border-bottom" "2px solid #1cabf1"
         , Ha.style "width" (toPx width)
