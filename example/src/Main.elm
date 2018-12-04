@@ -77,7 +77,7 @@ view model =
             ]
             (case model.page of
                 Counter state ->
-                    [ H.div [] [ H.text ("Goodbye " ++ state.name) ]
+                    [ H.div [] [ H.text ("Hello " ++ state.name) ]
                     , H.button [ He.onClick LogOut ] [ H.text "Log Out" ]
                     , H.div []
                         [ H.button [ He.onClick (CountInput (state.count + 1)) ] [ H.text "+" ]
