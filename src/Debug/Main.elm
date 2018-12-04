@@ -788,10 +788,10 @@ layoutToSize : Layout -> Size
 layoutToSize layout =
     case layout of
         Collapsed ->
-            { height = 20, width = 180 }
+            { height = 20, width = 179 }
 
         Expanded ->
-            { height = 222, width = 180 }
+            { height = 222, width = 179 }
 
 
 viewDivider : Html msg
@@ -1150,8 +1150,7 @@ viewNotes sessionTitle notes =
             , Ha.style "border" "none"
             , Ha.style "outline" "none"
             , Ha.style "width" "96%"
-            , Ha.style "font-weight" "bold"
-            , Ha.style "padding" "3.5px"
+            , Ha.style "padding" "5px"
             , Ha.style "border-bottom" "1px solid #d3d3d3"
             , Ha.placeholder "elm-debug"
             , Ha.title "The session title"
