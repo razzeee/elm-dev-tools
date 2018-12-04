@@ -249,7 +249,7 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
 
         InputNotes notes ->
             save
-                ( { model | notes = notes }, Cmd.none )
+                ( { model | notes = String.join "\n\n" (String.split "\n\n\n" (String.trimLeft notes)) }, Cmd.none )
 
         ToggleSubscriptions ->
             save
@@ -1089,7 +1089,7 @@ viewUpdate currentHover currentIndex ( index, json ) =
         [ Ha.style "height" "18px"
         , Ha.style "padding" "0 5px"
         , Ha.style "line-height" "18px"
-        , Ha.style "font-size" "9px"
+        , Ha.style "font-size" "8px"
         , Ha.style "color" color
         , Ha.style "background-color" backgroundColor
         , Ha.title title
@@ -1097,10 +1097,11 @@ viewUpdate currentHover currentIndex ( index, json ) =
         , He.onMouseOver (Hover (UpdateButtonAt index))
         , He.onMouseOut (Hover None)
         ]
-        [ H.text (fit 24 text)
+        [ H.text (fit 10 text)
         , H.span
             [ Ha.style "color" subColor
             , Ha.style "padding-left" "5px"
+            , Ha.style "font-size" "7px"
             ]
             [ H.text (fit 12 (String.join "" (String.split "null" sub)))
             ]
@@ -1115,7 +1116,8 @@ viewUpdate currentHover currentIndex ( index, json ) =
 viewNotes : String -> Html (Msg msg)
 viewNotes notes =
     H.textarea
-        [ Ha.style "border" "0"
+        [ Ha.style "overflow" "hidden auto"
+        , Ha.style "border" "0"
         , Ha.style "outline" "0"
         , Ha.style "display" "block"
         , Ha.style "padding" "5px"
@@ -1143,6 +1145,7 @@ viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
         , Ha.style "overflow" "hidden"
+        , Ha.style "height" "180px"
         ]
         body
 
