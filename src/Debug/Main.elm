@@ -127,6 +127,7 @@ toInit { update, msgDecoder, flags, model, cmd } =
               , isDragging = False
               , hoveredElement = None
               , importError = Just importError
+              , sessionTitle = ""
               }
             , Cmd.batch
                 [ Cmd.map UpdateWith cmd
@@ -194,6 +195,9 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                   }
                 , Cmd.none
                 )
+
+        InputSessionTitle sessionTitle ->
+            save ( { model | sessionTitle = sessionTitle }, Cmd.none )
 
         ToggleLayout ->
             let
@@ -265,10 +269,7 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
 
                 Just msgZl ->
                     ( model
-                      {- TODO
-                         generate appropriate name instead of "elm-debug", if available, based on Browser.Document.title
-                      -}
-                    , Fd.string "elm-debug" jsonMimeType (Je.encode 0 (encodeSession encodeMsg model))
+                    , Fd.string (toSessionTitle model.sessionTitle) jsonMimeType (Je.encode 0 (encodeSession encodeMsg model))
                     )
 
         Drag Start ->
@@ -342,6 +343,7 @@ type alias Model model msg =
     { updates : ZipList ( Maybe msg, model )
     , importError : Maybe Jd.Error
     , notes : String
+    , sessionTitle : String
     , isModelOverlayed : Bool
     , hoveredElement : Hoverable
     , viewportSize : Size
@@ -367,6 +369,7 @@ type Msg msg
     | FileSelected File
     | ImportSession String
     | InputNotes String
+    | InputSessionTitle String
     | ExportUpdates
     | Dismiss
     | DoNothing
@@ -396,6 +399,7 @@ type alias ViewPageConfig =
     , page : Page
     , updates : List ( Int, String )
     , notes : String
+    , sessionTitle : String
     }
 
 
@@ -467,6 +471,7 @@ viewDebug encodeMsg printModel model =
                 , page = model.page
                 , updates = Zl.toList (Zl.trim 10 (Zl.indexedMap toUpdateStringTuple model.updates))
                 , notes = model.notes
+                , sessionTitle = model.sessionTitle
                 }
         , viewControls
             [ Hl.lazy2 viewSlider updateCount (Zl.currentIndex model.updates)
@@ -513,6 +518,16 @@ updateWith update msgs index ( model, cmd ) =
               }
             , cmd
             )
+
+
+toSessionTitle : String -> String
+toSessionTitle sessionTitle =
+    case sessionTitle of
+        "" ->
+            "elm-debug"
+
+        _ ->
+            sessionTitle
 
 
 pageToJson : Page -> Je.Value
@@ -570,7 +585,7 @@ layoutFromJson =
 
 
 encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
-encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes } =
+encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes, sessionTitle } =
     let
         encodeMaybeMsg maybeMsg =
             case maybeMsg of
@@ -590,6 +605,7 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
                 , ( "notes", Je.string notes )
                 , ( "layout", layoutToJson layout )
                 , ( "page", pageToJson page )
+                , ( "sessionTitle", Je.string sessionTitle )
                 ]
           )
         ]
@@ -598,8 +614,8 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
 sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
 sessionDecoder decodeMsg model viewportSize =
     Jd.field "session" <|
-        Jd.map7
-            (\updates isModelOverlayed isSubscribed position layout page notes ->
+        Jd.map8
+            (\updates isModelOverlayed isSubscribed position layout page notes sessionTitle ->
                 ( { updates = Zl.singleton ( Nothing, model )
                   , isModelOverlayed = isModelOverlayed
                   , viewportSize = viewportSize
@@ -611,6 +627,7 @@ sessionDecoder decodeMsg model viewportSize =
                   , hoveredElement = None
                   , layout = layout
                   , page = page
+                  , sessionTitle = sessionTitle
                   }
                 , updates
                 )
@@ -622,6 +639,7 @@ sessionDecoder decodeMsg model viewportSize =
             (Jd.field "layout" layoutFromJson)
             (Jd.field "page" pageFromJson)
             (Jd.field "notes" Jd.string)
+            (Jd.field "sessionTitle" Jd.string)
 
 
 jsonMimeType : String
@@ -1124,26 +1142,43 @@ viewKeyedUpdate currentHover currentIndex ( index, json ) =
     )
 
 
-viewNotes : String -> Html (Msg msg)
-viewNotes notes =
-    H.textarea
-        [ Ha.style "overflow" "hidden auto"
-        , Ha.style "border" "0"
-        , Ha.style "outline" "0"
-        , Ha.style "display" "block"
-        , Ha.style "padding" "5px"
-        , Ha.style "height" "170px"
-        , Ha.style "width" "170px"
-        , Ha.style "resize" "none"
-        , Ha.placeholder "Describe the debugging session here..."
-        , Ha.value notes
-        , He.onInput InputNotes
+viewNotes : String -> String -> Html (Msg msg)
+viewNotes sessionTitle notes =
+    H.div []
+        [ H.input
+            [ Ha.style "display" "block"
+            , Ha.style "border" "none"
+            , Ha.style "outline" "none"
+            , Ha.style "width" "96%"
+            , Ha.style "font-weight" "bold"
+            , Ha.style "padding" "3.5px"
+            , Ha.style "border-bottom" "1px solid #d3d3d3"
+            , Ha.placeholder "elm-debug"
+            , Ha.title "The session title"
+            , Ha.value sessionTitle
+            , He.onInput InputSessionTitle
+            ]
+            []
+        , H.textarea
+            [ Ha.style "overflow" "hidden auto"
+            , Ha.style "border" "0"
+            , Ha.style "outline" "0"
+            , Ha.style "display" "block"
+            , Ha.style "padding" "5px"
+            , Ha.style "height" "146px"
+            , Ha.style "width" "170px"
+            , Ha.style "resize" "none"
+            , Ha.placeholder "..."
+            , Ha.title "The session notes"
+            , Ha.value notes
+            , He.onInput InputNotes
+            ]
+            []
         ]
-        []
 
 
 viewPage : ViewPageConfig -> Html (Msg msg)
-viewPage { currentIndex, currentHover, isSubscribed, layoutSize, page, updates, notes } =
+viewPage { currentIndex, currentHover, isSubscribed, layoutSize, page, updates, notes, sessionTitle } =
     let
         body =
             case page of
@@ -1151,7 +1186,7 @@ viewPage { currentIndex, currentHover, isSubscribed, layoutSize, page, updates, 
                     Hk.node "div" [] (List.map (viewKeyedUpdate currentHover currentIndex) updates)
 
                 Notes ->
-                    viewNotes notes
+                    viewNotes sessionTitle notes
     in
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
