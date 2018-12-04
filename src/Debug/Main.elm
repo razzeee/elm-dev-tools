@@ -197,7 +197,7 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                 )
 
         InputSessionTitle sessionTitle ->
-            save ( { model | sessionTitle = sessionTitle }, Cmd.none )
+            save ( { model | sessionTitle = String.trim sessionTitle }, Cmd.none )
 
         ToggleLayout ->
             let
@@ -1168,7 +1168,12 @@ viewNotes sessionTitle notes =
             , Ha.style "height" "146px"
             , Ha.style "width" "170px"
             , Ha.style "resize" "none"
-            , Ha.placeholder "..."
+            , Ha.placeholder """You can export this session to a file and send it as a bug-report.
+
+Updates are indexed for your convenience.
+
+Take a moment to describe what you're doing!
+"""
             , Ha.title "The session notes"
             , Ha.value notes
             , He.onInput InputNotes
