@@ -388,6 +388,17 @@ type alias ViewConfig model msg view =
     }
 
 
+type alias ViewPageConfig =
+    { currentIndex : Int
+    , currentHover : Hoverable
+    , isSubscribed : Bool
+    , layoutSize : Size
+    , page : Page
+    , updates : List ( Int, String )
+    , notes : String
+    }
+
+
 type alias UpdateConfig model msg =
     { msgDecoder : Jd.Decoder msg
     , encodeMsg : msg -> Je.Value
@@ -448,17 +459,15 @@ viewDebug encodeMsg printModel model =
                 , Hl.lazy viewNavigationUnderline model.page
                 ]
         , viewIf isExpanded <|
-            {- TODO
-               refactor viewPage to take a record instead of 7 individual args
-            -}
-            Hl.lazy7 viewPage
-                (Zl.currentIndex model.updates)
-                model.hoveredElement
-                model.isSubscribed
-                layoutSize
-                model.page
-                (Zl.toList (Zl.trim 10 (Zl.indexedMap toUpdateStringTuple model.updates)))
-                model.notes
+            Hl.lazy viewPage
+                { currentIndex = Zl.currentIndex model.updates
+                , currentHover = model.hoveredElement
+                , isSubscribed = model.isSubscribed
+                , layoutSize = layoutSize
+                , page = model.page
+                , updates = Zl.toList (Zl.trim 10 (Zl.indexedMap toUpdateStringTuple model.updates))
+                , notes = model.notes
+                }
         , viewControls
             [ Hl.lazy2 viewSlider updateCount (Zl.currentIndex model.updates)
             , viewDivider
@@ -1039,7 +1048,7 @@ viewSlider length currentIndex =
         , Ha.style "height" "15px"
         , Ha.style "width" "114px"
         , Ha.type_ "range"
-        , Ha.title "Scroll to other states"
+        , Ha.title "Drag to another state"
         , Ha.min (String.fromInt 0)
         , Ha.disabled (length == 1)
         , Ha.max (String.fromInt (length - 1))
@@ -1051,8 +1060,8 @@ viewSlider length currentIndex =
         []
 
 
-viewUpdate : Hoverable -> Int -> ( Int, String ) -> Html (Msg msg)
-viewUpdate currentHover currentIndex ( index, json ) =
+viewKeyedUpdate : Hoverable -> Int -> ( Int, String ) -> ( String, Html (Msg msg) )
+viewKeyedUpdate currentHover currentIndex ( index, json ) =
     let
         ( text, sub, title ) =
             case Jd.decodeString (Jd.keyValuePairs Jd.value) json of
@@ -1085,7 +1094,8 @@ viewUpdate currentHover currentIndex ( index, json ) =
             else
                 "white"
     in
-    selectable False
+    ( String.fromInt currentIndex
+    , selectable False
         [ Ha.style "height" "18px"
         , Ha.style "padding" "0 5px"
         , Ha.style "line-height" "18px"
@@ -1111,6 +1121,7 @@ viewUpdate currentHover currentIndex ( index, json ) =
             [ H.text (String.fromInt index)
             ]
         ]
+    )
 
 
 viewNotes : String -> Html (Msg msg)
@@ -1131,23 +1142,23 @@ viewNotes notes =
         []
 
 
-viewPage : Int -> Hoverable -> Bool -> Size -> Page -> List ( Int, String ) -> String -> Html (Msg msg)
-viewPage currentIndex currentHover isSubscribed layoutSize page updates notes =
+viewPage : ViewPageConfig -> Html (Msg msg)
+viewPage { currentIndex, currentHover, isSubscribed, layoutSize, page, updates, notes } =
     let
         body =
             case page of
                 Updates ->
-                    List.map (viewUpdate currentHover currentIndex) updates
+                    Hk.node "div" [] (List.map (viewKeyedUpdate currentHover currentIndex) updates)
 
                 Notes ->
-                    viewNotes notes :: []
+                    viewNotes notes
     in
     H.div
         [ Ha.style "border-bottom" "1px solid #d3d3d3"
         , Ha.style "overflow" "hidden"
         , Ha.style "height" "180px"
         ]
-        body
+        [ body ]
 
 
 viewControls : List (Html (Msg msg)) -> Html (Msg msg)
@@ -1194,7 +1205,7 @@ viewNavigationPage index page currentPage currentHover =
         title =
             case page of
                 Updates ->
-                    "A list of updates"
+                    "List of messages"
 
                 Notes ->
                     "Notes on the debugging session"
