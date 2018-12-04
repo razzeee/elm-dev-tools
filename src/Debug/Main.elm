@@ -597,49 +597,63 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
     in
     Je.object
         [ ( "session"
-          , Je.object
-                [ ( "updates", Zl.jsonEncode encodeMaybeMsg (Zl.map Tuple.first updates) )
-                , ( "isModelOverlayed", Je.bool isModelOverlayed )
-                , ( "isSubscribed", Je.bool isSubscribed )
-                , ( "position", P.jsonEncode position )
-                , ( "notes", Je.string notes )
-                , ( "layout", layoutToJson layout )
-                , ( "page", pageToJson page )
-                , ( "sessionTitle", Je.string sessionTitle )
-                ]
+          , Je.string <|
+                Je.encode 0 <|
+                    Je.object
+                        [ ( "updates", Zl.jsonEncode encodeMaybeMsg (Zl.map Tuple.first updates) )
+                        , ( "isModelOverlayed", Je.bool isModelOverlayed )
+                        , ( "isSubscribed", Je.bool isSubscribed )
+                        , ( "position", P.jsonEncode position )
+                        , ( "notes", Je.string notes )
+                        , ( "layout", layoutToJson layout )
+                        , ( "page", pageToJson page )
+                        , ( "sessionTitle", Je.string sessionTitle )
+                        ]
           )
         ]
 
 
 sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
 sessionDecoder decodeMsg model viewportSize =
-    Jd.field "session" <|
-        Jd.map8
-            (\updates isModelOverlayed isSubscribed position layout page notes sessionTitle ->
-                ( { updates = Zl.singleton ( Nothing, model )
-                  , isModelOverlayed = isModelOverlayed
-                  , viewportSize = viewportSize
-                  , notes = notes
-                  , importError = Nothing
-                  , position = position
-                  , isDragging = False
-                  , isSubscribed = isSubscribed
-                  , hoveredElement = None
-                  , layout = layout
-                  , page = page
-                  , sessionTitle = sessionTitle
-                  }
-                , updates
+    let
+        sessionDecoderHelper =
+            Jd.map8
+                (\updates isModelOverlayed isSubscribed position layout page notes sessionTitle ->
+                    ( { updates = Zl.singleton ( Nothing, model )
+                      , isModelOverlayed = isModelOverlayed
+                      , viewportSize = viewportSize
+                      , notes = notes
+                      , importError = Nothing
+                      , position = position
+                      , isDragging = False
+                      , isSubscribed = isSubscribed
+                      , hoveredElement = None
+                      , layout = layout
+                      , page = page
+                      , sessionTitle = sessionTitle
+                      }
+                    , updates
+                    )
                 )
+                (Jd.field "updates" (Jd.maybe (Zl.jsonDecoder (Jd.maybe decodeMsg))))
+                (Jd.field "isModelOverlayed" Jd.bool)
+                (Jd.field "isSubscribed" Jd.bool)
+                (Jd.field "position" P.jsonDecoder)
+                (Jd.field "layout" layoutFromJson)
+                (Jd.field "page" pageFromJson)
+                (Jd.field "notes" Jd.string)
+                (Jd.field "sessionTitle" Jd.string)
+    in
+    Jd.field "session" Jd.string
+        |> Jd.andThen
+            (\jsonString ->
+                case Jd.decodeString sessionDecoderHelper jsonString of
+                    Ok session ->
+                        Jd.succeed session
+
+                    Err error ->
+                        Jd.fail (Jd.errorToString error)
             )
-            (Jd.field "updates" (Jd.maybe (Zl.jsonDecoder (Jd.maybe decodeMsg))))
-            (Jd.field "isModelOverlayed" Jd.bool)
-            (Jd.field "isSubscribed" Jd.bool)
-            (Jd.field "position" P.jsonDecoder)
-            (Jd.field "layout" layoutFromJson)
-            (Jd.field "page" pageFromJson)
-            (Jd.field "notes" Jd.string)
-            (Jd.field "sessionTitle" Jd.string)
 
 
 jsonMimeType : String
