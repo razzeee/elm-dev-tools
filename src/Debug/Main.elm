@@ -335,7 +335,6 @@ type Hoverable
     | UpdateSlider
     | NavigationButtonFor Page
     | UpdateButtonAt Int
-    | CommandButtonAt Int
     | SubscribeButton
     | None
 
@@ -1240,44 +1239,23 @@ viewNavigationPage index page currentPage currentHover =
         this =
             NavigationButtonFor page
 
-        isSelected =
-            page == currentPage
+        ( color, backgroundColor ) =
+            if page == currentPage then
+                ( "black", "rgba(0,0,0,0)" )
 
-        isHovered =
-            this == currentHover
-
-        color =
-            if isSelected || isHovered then
-                "black"
+            else if this == currentHover then
+                ( "black", "rgba(0,0,0,.03)" )
 
             else
-                "#555555"
+                ( "#555555", "rgba(0,0,0,0)" )
 
-        backgroundColor =
-            if isSelected then
-                "rgba(0,0,0,0)"
-
-            else if isHovered then
-                "rgba(0,0,0,.03)"
-
-            else
-                "rgba(0,0,0,0)"
-
-        title =
+        ( label, title ) =
             case page of
                 Updates ->
-                    "List of messages"
+                    ( "Updates", "List of messages" )
 
                 Notes ->
-                    "Notes on the debugging session"
-
-        label =
-            case page of
-                Notes ->
-                    "Notes"
-
-                Updates ->
-                    "Updates"
+                    ( "Notes", "Notes on the debugging session" )
     in
     selectable False
         [ Ha.style "font-size" "9px"
