@@ -100,6 +100,7 @@ toInit { update, msgDecoder, flags, model, cmd } =
                 update
                 (List.filterMap identity msgs)
                 index
+                session.isSubscribed
                 ( session
                 , Cmd.batch
                     [ Cmd.map UpdateWith cmd
@@ -303,7 +304,7 @@ toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
                                     ( 0, [] )
                     in
                     save
-                        (updateWith update (List.filterMap identity msgs) index ( { session | isSubscribed = False }, Cmd.none ))
+                        (updateWith update (List.filterMap identity msgs) index session.isSubscribed ( { session | isSubscribed = False }, Cmd.none ))
 
                 Err err ->
                     ( { model | importError = Just err }, Cmd.none )
@@ -493,8 +494,8 @@ saveSession outPort encodeMsg ( model, cmd ) =
     )
 
 
-updateWith : (msg -> model -> ( model, Cmd msg )) -> List msg -> Int -> ( Model model msg, Cmd (Msg msg) ) -> ( Model model msg, Cmd (Msg msg) )
-updateWith update msgs index ( model, cmd ) =
+updateWith : (msg -> model -> ( model, Cmd msg )) -> List msg -> Int -> Bool -> ( Model model msg, Cmd (Msg msg) ) -> ( Model model msg, Cmd (Msg msg) )
+updateWith update msgs index isSubscribed ( model, cmd ) =
     case msgs of
         updateMsg :: updateMsgs ->
             let
@@ -504,6 +505,7 @@ updateWith update msgs index ( model, cmd ) =
             updateWith update
                 updateMsgs
                 index
+                isSubscribed
                 ( { model | updates = Zl.dropHeads (Zl.insert ( Just updateMsg, updateModel ) model.updates) }
                 , Cmd.batch
                     [ cmd
@@ -514,7 +516,7 @@ updateWith update msgs index ( model, cmd ) =
         [] ->
             ( { model
                 | updates = Zl.toIndex index model.updates
-                , isSubscribed = index == Zl.length model.updates - 1
+                , isSubscribed = index == Zl.length model.updates - 1 && isSubscribed
               }
             , cmd
             )
