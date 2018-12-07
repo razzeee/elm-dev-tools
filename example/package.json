@@ -1,9 +1,0 @@
-{
-  "name": "example",
-  "version": "0.1.0",
-  "devDependencies": {
-    "live-server": "1.2.1",
-    "nodemon": "1.18.7",
-    "elm": "0.19.0-bugfix2"
-  }
-}

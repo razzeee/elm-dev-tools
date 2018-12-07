@@ -1,0 +1,27 @@
+{
+  "name": "elm-develop",
+  "version": "0.1.0",
+  "description": "Tools for developing Elm programs!",
+  "main": "src/api.js",
+  "scripts": {},
+  "bin": {
+    "elm-develop": "bin/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opvasger/elm-develop.git"
+  },
+  "keywords": [
+    "elm",
+    "develop",
+    "debug",
+    "hot-reload",
+    "time-travel"
+  ],
+  "author": "",
+  "license": "BSD-3-Clause",
+  "bugs": {
+    "url": "https://github.com/opvasger/elm-develop/issues"
+  },
+  "homepage": "https://github.com/opvasger/elm-develop#readme"
+}
