@@ -15,16 +15,13 @@
         var example = Elm.Main.init({
             node: document.body,
             flags: {
-                session: localStorage.getItem("elm-debug")
+                devTools: localStorage.getItem("elm-dev-tools")
             }
         })
 
         example.ports.output.subscribe(function (output) {
 
-            if (output.session) {
-
-                localStorage.setItem("elm-debug", output.session)
-            }
+            if (output.devTools) localStorage.setItem("elm-dev-tools", output.devTools);
         })
 
     </script>

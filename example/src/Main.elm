@@ -138,7 +138,7 @@ encodeMsg msg =
             Je.object [ ( "LogOut", Je.null ) ]
 
 
-debug =
+devTools =
     { printModel = Debug.toString
     , output = output
     , msgDecoder = msgDecoder
@@ -152,5 +152,5 @@ main =
         , update = update
         , view = view
         , subscriptions = subscriptions
-        , debug = debug
+        , devTools = devTools
         }

@@ -13,7 +13,7 @@ type alias SandboxConfig model msg =
     { init : model
     , view : model -> Html msg
     , update : msg -> model -> model
-    , debug : DevTools.Main.Config model msg
+    , devTools : DevTools.Main.Config model msg
     }
 
 
@@ -22,7 +22,7 @@ type alias ElementConfig model msg =
     , view : model -> Html msg
     , update : msg -> model -> ( model, Cmd msg )
     , subscriptions : model -> Sub msg
-    , debug : DevTools.Main.Config model msg
+    , devTools : DevTools.Main.Config model msg
     }
 
 
@@ -31,7 +31,7 @@ type alias DocumentConfig model msg =
     , view : model -> Browser.Document msg
     , update : msg -> model -> ( model, Cmd msg )
     , subscriptions : model -> Sub msg
-    , debug : DevTools.Main.Config model msg
+    , devTools : DevTools.Main.Config model msg
     }
 
 
@@ -42,45 +42,45 @@ type alias ApplicationConfig model msg =
     , subscriptions : model -> Sub msg
     , onUrlRequest : Browser.UrlRequest -> msg
     , onUrlChange : Url -> msg
-    , debug : DevTools.Main.Config model msg
+    , devTools : DevTools.Main.Config model msg
     }
 
 
 sandbox : SandboxConfig model msg -> DevTools.Main.Program Jd.Value model msg
-sandbox { init, view, update, debug } =
+sandbox { init, view, update, devTools } =
     Browser.document
         { init =
             \flags ->
                 DevTools.Main.toInit
                     { update = \msg model -> ( update msg model, Cmd.none )
-                    , msgDecoder = debug.msgDecoder
+                    , msgDecoder = devTools.msgDecoder
                     , flags = flags
                     , model = init
                     , cmd = Cmd.none
                     }
         , view =
             DevTools.Main.toDocument
-                { printModel = debug.printModel
-                , encodeMsg = debug.encodeMsg
+                { printModel = devTools.printModel
+                , encodeMsg = devTools.encodeMsg
                 , view = \model -> { title = "", body = view model :: [] }
                 }
         , update =
             DevTools.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
-                , output = debug.output
+                { msgDecoder = devTools.msgDecoder
+                , encodeMsg = devTools.encodeMsg
+                , output = devTools.output
                 , update = \msg model -> ( update msg model, Cmd.none )
                 }
         , subscriptions =
             DevTools.Main.toSubscriptions
                 { subscriptions = always Sub.none
-                , msgDecoder = debug.msgDecoder
+                , msgDecoder = devTools.msgDecoder
                 }
         }
 
 
 element : ElementConfig model msg -> DevTools.Main.Program Jd.Value model msg
-element { init, view, update, subscriptions, debug } =
+element { init, view, update, subscriptions, devTools } =
     Browser.element
         { init =
             \flags ->
@@ -90,34 +90,34 @@ element { init, view, update, subscriptions, debug } =
                 in
                 DevTools.Main.toInit
                     { update = update
-                    , msgDecoder = debug.msgDecoder
+                    , msgDecoder = devTools.msgDecoder
                     , flags = flags
                     , model = model
                     , cmd = cmd
                     }
         , view =
             DevTools.Main.toHtml
-                { printModel = debug.printModel
-                , encodeMsg = debug.encodeMsg
+                { printModel = devTools.printModel
+                , encodeMsg = devTools.encodeMsg
                 , view = view
                 }
         , update =
             DevTools.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
-                , output = debug.output
+                { msgDecoder = devTools.msgDecoder
+                , encodeMsg = devTools.encodeMsg
+                , output = devTools.output
                 , update = update
                 }
         , subscriptions =
             DevTools.Main.toSubscriptions
-                { msgDecoder = debug.msgDecoder
+                { msgDecoder = devTools.msgDecoder
                 , subscriptions = subscriptions
                 }
         }
 
 
 document : DocumentConfig model msg -> DevTools.Main.Program Jd.Value model msg
-document { init, view, update, subscriptions, debug } =
+document { init, view, update, subscriptions, devTools } =
     Browser.document
         { init =
             \flags ->
@@ -127,34 +127,34 @@ document { init, view, update, subscriptions, debug } =
                 in
                 DevTools.Main.toInit
                     { update = update
-                    , msgDecoder = debug.msgDecoder
+                    , msgDecoder = devTools.msgDecoder
                     , flags = flags
                     , model = model
                     , cmd = cmd
                     }
         , view =
             DevTools.Main.toDocument
-                { printModel = debug.printModel
-                , encodeMsg = debug.encodeMsg
+                { printModel = devTools.printModel
+                , encodeMsg = devTools.encodeMsg
                 , view = view
                 }
         , update =
             DevTools.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { msgDecoder = devTools.msgDecoder
+                , encodeMsg = devTools.encodeMsg
                 , update = update
-                , output = debug.output
+                , output = devTools.output
                 }
         , subscriptions =
             DevTools.Main.toSubscriptions
                 { subscriptions = subscriptions
-                , msgDecoder = debug.msgDecoder
+                , msgDecoder = devTools.msgDecoder
                 }
         }
 
 
 application : ApplicationConfig model msg -> DevTools.Main.Program Jd.Value model msg
-application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debug } =
+application { init, view, update, subscriptions, onUrlRequest, onUrlChange, devTools } =
     Browser.application
         { init =
             \flags url key ->
@@ -164,28 +164,28 @@ application { init, view, update, subscriptions, onUrlRequest, onUrlChange, debu
                 in
                 DevTools.Main.toInit
                     { update = update
-                    , msgDecoder = debug.msgDecoder
+                    , msgDecoder = devTools.msgDecoder
                     , flags = flags
                     , model = model
                     , cmd = cmd
                     }
         , view =
             DevTools.Main.toDocument
-                { printModel = debug.printModel
-                , encodeMsg = debug.encodeMsg
+                { printModel = devTools.printModel
+                , encodeMsg = devTools.encodeMsg
                 , view = view
                 }
         , update =
             DevTools.Main.toUpdate
-                { msgDecoder = debug.msgDecoder
-                , encodeMsg = debug.encodeMsg
+                { msgDecoder = devTools.msgDecoder
+                , encodeMsg = devTools.encodeMsg
                 , update = update
-                , output = debug.output
+                , output = devTools.output
                 }
         , subscriptions =
             DevTools.Main.toSubscriptions
                 { subscriptions = subscriptions
-                , msgDecoder = debug.msgDecoder
+                , msgDecoder = devTools.msgDecoder
                 }
         , onUrlChange = DevTools.Main.toMsg << onUrlChange
         , onUrlRequest = DevTools.Main.toMsg << onUrlRequest

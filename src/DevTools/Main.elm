@@ -161,7 +161,7 @@ toDocument { printModel, encodeMsg, view } model =
             selectable
             (not model.isDragging)
             [ toCursorStyle model.isDragging model.hoveredElement ]
-            (Hl.lazy3 viewDebug encodeMsg printModel model
+            (Hl.lazy3 viewDevTools encodeMsg printModel model
                 :: Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
                 :: List.map (H.map UpdateWith) body
             )
@@ -176,7 +176,7 @@ toHtml { printModel, encodeMsg, view } model =
         (not model.isDragging)
         [ toCursorStyle model.isDragging model.hoveredElement
         ]
-        [ Hl.lazy3 viewDebug encodeMsg printModel model
+        [ Hl.lazy3 viewDevTools encodeMsg printModel model
         , Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
         , H.map UpdateWith (Hl.lazy view (Tuple.second model.updates.current))
         ]
@@ -361,7 +361,7 @@ toUpdate { msgDecoder, encodeMsg, update, output } msg model =
 
                 Just msgZl ->
                     ( model
-                    , Fd.string (toSessionTitle model.sessionTitle) jsonMimeType (Je.encode 0 (encodeSession encodeMsg model))
+                    , Fd.string (withDefaultSessionTitle model.sessionTitle) jsonMimeType (Je.encode 0 (encodeSession encodeMsg model))
                     )
 
         Drag Start ->
@@ -401,8 +401,8 @@ toUpdate { msgDecoder, encodeMsg, update, output } msg model =
                     ( { model | importError = Just err }, Cmd.none )
 
 
-viewDebug : (msg -> Je.Value) -> (model -> String) -> Model model msg -> Html (Msg msg)
-viewDebug encodeMsg printModel model =
+viewDevTools : (msg -> Je.Value) -> (model -> String) -> Model model msg -> Html (Msg msg)
+viewDevTools encodeMsg printModel model =
     let
         isExpanded =
             model.layout == Expanded
@@ -500,11 +500,11 @@ updateWith update msgs index isSubscribed ( model, cmd ) =
             )
 
 
-toSessionTitle : String -> String
-toSessionTitle sessionTitle =
+withDefaultSessionTitle : String -> String
+withDefaultSessionTitle sessionTitle =
     case sessionTitle of
         "" ->
-            "elm-debug"
+            "elm-dev-tools"
 
         _ ->
             sessionTitle
@@ -589,21 +589,7 @@ encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, vie
                 , ( "sessionTitle", Je.string sessionTitle )
                 ]
     in
-    Je.object [ ( "session", Je.string (Je.encode 0 encodeSessionHelper) ) ]
-
-
-nestedJsonDecoder : Jd.Decoder value -> Jd.Decoder value
-nestedJsonDecoder decoder =
-    let
-        nestedJsonDecoderHelper text =
-            case Jd.decodeString decoder text of
-                Ok session ->
-                    Jd.succeed session
-
-                Err error ->
-                    Jd.fail (Jd.errorToString error)
-    in
-    Jd.andThen nestedJsonDecoderHelper Jd.string
+    Je.object [ ( "devTools", Je.string (Je.encode 0 encodeSessionHelper) ) ]
 
 
 sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
@@ -637,7 +623,21 @@ sessionDecoder decodeMsg model viewportSize =
                 (Jd.field "notes" Jd.string)
                 (Jd.field "sessionTitle" Jd.string)
     in
-    Jd.field "session" (nestedJsonDecoder sessionDecoderHelper)
+    Jd.field "devTools" (nestedJsonDecoder sessionDecoderHelper)
+
+
+nestedJsonDecoder : Jd.Decoder value -> Jd.Decoder value
+nestedJsonDecoder decoder =
+    let
+        nestedJsonDecoderHelper text =
+            case Jd.decodeString decoder text of
+                Ok session ->
+                    Jd.succeed session
+
+                Err error ->
+                    Jd.fail (Jd.errorToString error)
+    in
+    Jd.andThen nestedJsonDecoderHelper Jd.string
 
 
 jsonMimeType : String
@@ -1150,7 +1150,7 @@ viewNotes sessionTitle notes =
             , Ha.style "width" "96%"
             , Ha.style "padding" "5px"
             , Ha.style "border-bottom" "1px solid #d3d3d3"
-            , Ha.placeholder "elm-debug"
+            , Ha.placeholder "elm-dev-tools"
             , Ha.title "The session title"
             , Ha.value sessionTitle
             , He.onInput InputSessionTitle
@@ -1232,7 +1232,7 @@ viewNavigationPage index page currentPage currentHover =
                     ( "Updates", "List of messages" )
 
                 Notes ->
-                    ( "Notes", "Notes on the debugging session" )
+                    ( "Notes", "Notes on the development session" )
     in
     selectable False
         [ Ha.style "font-size" "9px"
