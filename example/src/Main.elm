@@ -57,7 +57,7 @@ update msg model =
 subscriptions model =
     case model.page of
         Counter state ->
-            Time.every 50 (always (CountInput (state.count + 1)))
+            Time.every 500 (always (CountInput (state.count + 1)))
 
         _ ->
             Sub.none

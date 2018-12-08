@@ -24,8 +24,112 @@ import Tuple
 import ZipList as Zl exposing (ZipList)
 
 
+type Page
+    = Notes
+    | Updates
 
--- API
+
+type DragEvent
+    = Start
+    | To Position
+    | Stop
+
+
+type Hoverable
+    = OverlayButton
+    | DragButton
+    | DismissButton
+    | LayoutButton
+    | ImportButton
+    | ExportButton
+    | UpdateSlider
+    | NavigationButtonFor Page
+    | UpdateButtonAt Int
+    | SubscribeButton
+    | None
+
+
+type alias Model model msg =
+    { updates : ZipList ( Maybe msg, model )
+    , importError : Maybe Jd.Error
+    , notes : String
+    , sessionTitle : String
+    , isModelOverlayed : Bool
+    , hoveredElement : Hoverable
+    , viewportSize : Size
+    , position : Position
+    , isDragging : Bool
+    , isSubscribed : Bool
+    , layout : Layout
+    , page : Page
+    }
+
+
+type Msg msg
+    = UpdateWith msg
+    | ToggleLayout
+    | ToggleModelOverlay
+    | ToggleSubscriptions
+    | SelectFile
+    | Drag DragEvent
+    | Hover Hoverable
+    | ResizeViewport Size
+    | SelectUpdateAt Int
+    | SelectPage Page
+    | FileSelected File
+    | ImportSession String
+    | InputNotes String
+    | InputSessionTitle String
+    | ExportUpdates
+    | Dismiss
+    | DoNothing
+
+
+type alias InitConfig model msg =
+    { update : msg -> model -> ( model, Cmd msg )
+    , msgDecoder : Jd.Decoder msg
+    , flags : Jd.Value
+    , model : model
+    , cmd : Cmd msg
+    }
+
+
+type alias ViewConfig model msg view =
+    { printModel : model -> String
+    , encodeMsg : msg -> Je.Value
+    , view : model -> view
+    }
+
+
+type alias ViewPageConfig =
+    { currentIndex : Int
+    , currentHover : Hoverable
+    , isSubscribed : Bool
+    , layoutSize : Size
+    , page : Page
+    , updates : List ( Int, String )
+    , notes : String
+    , sessionTitle : String
+    }
+
+
+type alias UpdateConfig model msg =
+    { msgDecoder : Jd.Decoder msg
+    , encodeMsg : msg -> Je.Value
+    , update : msg -> model -> ( model, Cmd msg )
+    , output : Je.Value -> Cmd (Msg msg)
+    }
+
+
+type alias SubsConfig model msg =
+    { msgDecoder : Jd.Decoder msg
+    , subscriptions : model -> Sub msg
+    }
+
+
+type Layout
+    = Collapsed
+    | Expanded
 
 
 type alias Config model msg =
@@ -80,11 +184,6 @@ toHtml { printModel, encodeMsg, view } model =
 
 toInit : InitConfig model msg -> ( Model model msg, Cmd (Msg msg) )
 toInit { update, msgDecoder, flags, model, cmd } =
-    {- TODO
-        remove the invalid state where sessionDecoder is passed
-       { width = 0, height = 0 }
-
-    -}
     case Jd.decodeValue (sessionDecoder msgDecoder model { width = 0, height = 0 }) flags of
         Ok ( session, msgZl ) ->
             let
@@ -110,14 +209,6 @@ toInit { update, msgDecoder, flags, model, cmd } =
 
         Err importError ->
             ( { updates = Zl.singleton ( Nothing, model )
-
-              {- TODO
-                 remove the invalid state where
-                 { model
-                     | position = { left = 10000, top = 10000 }
-                     , viewportSize = { width = 0, height = 0
-                     }
-              -}
               , position = { left = 10000, top = 10000 }
               , viewportSize = { width = 0, height = 0 }
               , layout = Collapsed
@@ -310,118 +401,6 @@ toUpdate { msgDecoder, encodeMsg, update, output } msg model =
                     ( { model | importError = Just err }, Cmd.none )
 
 
-
--- Internals
-
-
-type Page
-    = Notes
-    | Updates
-
-
-type DragEvent
-    = Start
-    | To Position
-    | Stop
-
-
-type Hoverable
-    = OverlayButton
-    | DragButton
-    | DismissButton
-    | LayoutButton
-    | ImportButton
-    | ExportButton
-    | UpdateSlider
-    | NavigationButtonFor Page
-    | UpdateButtonAt Int
-    | SubscribeButton
-    | None
-
-
-type alias Model model msg =
-    { updates : ZipList ( Maybe msg, model )
-    , importError : Maybe Jd.Error
-    , notes : String
-    , sessionTitle : String
-    , isModelOverlayed : Bool
-    , hoveredElement : Hoverable
-    , viewportSize : Size
-    , position : Position
-    , isDragging : Bool
-    , isSubscribed : Bool
-    , layout : Layout
-    , page : Page
-    }
-
-
-type Msg msg
-    = UpdateWith msg
-    | ToggleLayout
-    | ToggleModelOverlay
-    | ToggleSubscriptions
-    | SelectFile
-    | Drag DragEvent
-    | Hover Hoverable
-    | ResizeViewport Size
-    | SelectUpdateAt Int
-    | SelectPage Page
-    | FileSelected File
-    | ImportSession String
-    | InputNotes String
-    | InputSessionTitle String
-    | ExportUpdates
-    | Dismiss
-    | DoNothing
-
-
-type alias InitConfig model msg =
-    { update : msg -> model -> ( model, Cmd msg )
-    , msgDecoder : Jd.Decoder msg
-    , flags : Jd.Value
-    , model : model
-    , cmd : Cmd msg
-    }
-
-
-type alias ViewConfig model msg view =
-    { printModel : model -> String
-    , encodeMsg : msg -> Je.Value
-    , view : model -> view
-    }
-
-
-type alias ViewPageConfig =
-    { currentIndex : Int
-    , currentHover : Hoverable
-    , isSubscribed : Bool
-    , layoutSize : Size
-    , page : Page
-    , updates : List ( Int, String )
-    , notes : String
-    , sessionTitle : String
-    }
-
-
-type alias UpdateConfig model msg =
-    { msgDecoder : Jd.Decoder msg
-    , encodeMsg : msg -> Je.Value
-    , update : msg -> model -> ( model, Cmd msg )
-    , output : Je.Value -> Cmd (Msg msg)
-    }
-
-
-type alias SubsConfig model msg =
-    { msgDecoder : Jd.Decoder msg
-    , subscriptions : model -> Sub msg
-    }
-
-
-type Layout
-    = Collapsed
-    | Expanded
-
-
 viewDebug : (msg -> Je.Value) -> (model -> String) -> Model model msg -> Html (Msg msg)
 viewDebug encodeMsg printModel model =
     let
@@ -585,43 +564,50 @@ layoutFromJson =
         Jd.string
 
 
+jsonEncodeMaybe : (value -> Je.Value) -> Maybe value -> Je.Value
+jsonEncodeMaybe encodeValue maybeValue =
+    case maybeValue of
+        Just value ->
+            encodeValue value
+
+        Nothing ->
+            Je.null
+
+
 encodeSession : (msg -> Je.Value) -> Model model msg -> Je.Value
 encodeSession encodeMsg { updates, isModelOverlayed, position, layout, page, viewportSize, isSubscribed, notes, sessionTitle } =
-    {- TODO
-       unreadable code - refactor it.
-    -}
     let
-        encodeMaybeMsg maybeMsg =
-            case maybeMsg of
-                Just msg ->
-                    encodeMsg msg
-
-                Nothing ->
-                    Je.null
+        encodeSessionHelper =
+            Je.object
+                [ ( "updates", Zl.jsonEncode (jsonEncodeMaybe encodeMsg) (Zl.map Tuple.first updates) )
+                , ( "isModelOverlayed", Je.bool isModelOverlayed )
+                , ( "isSubscribed", Je.bool isSubscribed )
+                , ( "position", P.jsonEncode position )
+                , ( "notes", Je.string notes )
+                , ( "layout", layoutToJson layout )
+                , ( "page", pageToJson page )
+                , ( "sessionTitle", Je.string sessionTitle )
+                ]
     in
-    Je.object
-        [ ( "session"
-          , Je.string <|
-                Je.encode 0 <|
-                    Je.object
-                        [ ( "updates", Zl.jsonEncode encodeMaybeMsg (Zl.map Tuple.first updates) )
-                        , ( "isModelOverlayed", Je.bool isModelOverlayed )
-                        , ( "isSubscribed", Je.bool isSubscribed )
-                        , ( "position", P.jsonEncode position )
-                        , ( "notes", Je.string notes )
-                        , ( "layout", layoutToJson layout )
-                        , ( "page", pageToJson page )
-                        , ( "sessionTitle", Je.string sessionTitle )
-                        ]
-          )
-        ]
+    Je.object [ ( "session", Je.string (Je.encode 0 encodeSessionHelper) ) ]
+
+
+nestedJsonDecoder : Jd.Decoder value -> Jd.Decoder value
+nestedJsonDecoder decoder =
+    let
+        nestedJsonDecoderHelper text =
+            case Jd.decodeString decoder text of
+                Ok session ->
+                    Jd.succeed session
+
+                Err error ->
+                    Jd.fail (Jd.errorToString error)
+    in
+    Jd.andThen nestedJsonDecoderHelper Jd.string
 
 
 sessionDecoder : Jd.Decoder msg -> model -> Size -> Jd.Decoder ( Model model msg, Maybe (ZipList (Maybe msg)) )
 sessionDecoder decodeMsg model viewportSize =
-    {- TODO
-       unreadable code - refactor it.
-    -}
     let
         sessionDecoderHelper =
             Jd.map8
@@ -651,16 +637,7 @@ sessionDecoder decodeMsg model viewportSize =
                 (Jd.field "notes" Jd.string)
                 (Jd.field "sessionTitle" Jd.string)
     in
-    Jd.field "session" Jd.string
-        |> Jd.andThen
-            (\jsonString ->
-                case Jd.decodeString sessionDecoderHelper jsonString of
-                    Ok session ->
-                        Jd.succeed session
-
-                    Err error ->
-                        Jd.fail (Jd.errorToString error)
-            )
+    Jd.field "session" (nestedJsonDecoder sessionDecoderHelper)
 
 
 jsonMimeType : String
