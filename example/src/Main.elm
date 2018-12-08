@@ -1,7 +1,7 @@
 port module Main exposing (main)
 
 import Browser
-import Debug.Browser
+import DevTools.Browser
 import Html as H exposing (Html)
 import Html.Attributes as Ha
 import Html.Events as He
@@ -10,7 +10,7 @@ import Json.Encode as Je
 import Time
 
 
-port outPort : Jd.Value -> Cmd msg
+port output : Je.Value -> Cmd msg
 
 
 type Msg
@@ -110,39 +110,44 @@ view model =
     }
 
 
+msgDecoder =
+    Jd.oneOf
+        [ Jd.field "NameInput" (Jd.map NameInput Jd.string)
+        , Jd.field "PassInput" (Jd.map PassInput Jd.string)
+        , Jd.field "CountInput" (Jd.map CountInput Jd.int)
+        , Jd.field "LogIn" (Jd.null LogIn)
+        , Jd.field "LogOut" (Jd.null LogOut)
+        ]
+
+
+encodeMsg msg =
+    case msg of
+        NameInput text ->
+            Je.object [ ( "NameInput", Je.string text ) ]
+
+        PassInput text ->
+            Je.object [ ( "PassInput", Je.string text ) ]
+
+        CountInput count ->
+            Je.object [ ( "CountInput", Je.int count ) ]
+
+        LogIn ->
+            Je.object [ ( "LogIn", Je.null ) ]
+
+        LogOut ->
+            Je.object [ ( "LogOut", Je.null ) ]
+
+
 debug =
     { printModel = Debug.toString
-    , outPort = outPort
-    , msgDecoder =
-        Jd.oneOf
-            [ Jd.field "NameInput" (Jd.map NameInput Jd.string)
-            , Jd.field "PassInput" (Jd.map PassInput Jd.string)
-            , Jd.field "CountInput" (Jd.map CountInput Jd.int)
-            , Jd.field "LogIn" (Jd.null LogIn)
-            , Jd.field "LogOut" (Jd.null LogOut)
-            ]
-    , encodeMsg =
-        \msg ->
-            case msg of
-                NameInput text ->
-                    Je.object [ ( "NameInput", Je.string text ) ]
-
-                PassInput text ->
-                    Je.object [ ( "PassInput", Je.string text ) ]
-
-                CountInput count ->
-                    Je.object [ ( "CountInput", Je.int count ) ]
-
-                LogIn ->
-                    Je.object [ ( "LogIn", Je.null ) ]
-
-                LogOut ->
-                    Je.object [ ( "LogOut", Je.null ) ]
+    , output = output
+    , msgDecoder = msgDecoder
+    , encodeMsg = encodeMsg
     }
 
 
 main =
-    Debug.Browser.document
+    DevTools.Browser.document
         { init = init
         , update = update
         , view = view

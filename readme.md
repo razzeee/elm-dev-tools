@@ -1,2 +1,2 @@
-# Elm Debug
-Debug Elm programs!
+# Elm DevTools
+Tools for developing Elm programs!

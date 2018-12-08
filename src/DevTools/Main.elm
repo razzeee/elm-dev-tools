@@ -1,4 +1,4 @@
-module Debug.Main exposing (Config, Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
+module DevTools.Main exposing (Config, Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
 
 import Browser
 import Browser.Dom as Bd
@@ -32,7 +32,7 @@ type alias Config model msg =
     { printModel : model -> String
     , encodeMsg : msg -> Je.Value
     , msgDecoder : Jd.Decoder msg
-    , outPort : Je.Value -> Cmd (Msg msg)
+    , output : Je.Value -> Cmd (Msg msg)
     }
 
 
@@ -157,10 +157,10 @@ toSubscriptions { msgDecoder, subscriptions } { updates, position, isDragging, i
 
 
 toUpdate : UpdateConfig model msg -> Msg msg -> Model model msg -> ( Model model msg, Cmd (Msg msg) )
-toUpdate { msgDecoder, encodeMsg, update, outPort } msg model =
+toUpdate { msgDecoder, encodeMsg, update, output } msg model =
     let
         save =
-            saveSession outPort encodeMsg
+            saveSession output encodeMsg
     in
     case msg of
         UpdateWith updateMsg ->
@@ -407,7 +407,7 @@ type alias UpdateConfig model msg =
     { msgDecoder : Jd.Decoder msg
     , encodeMsg : msg -> Je.Value
     , update : msg -> model -> ( model, Cmd msg )
-    , outPort : Je.Value -> Cmd (Msg msg)
+    , output : Je.Value -> Cmd (Msg msg)
     }
 
 
@@ -484,11 +484,11 @@ viewDebug encodeMsg printModel model =
 
 
 saveSession : (Je.Value -> Cmd (Msg msg)) -> (msg -> Je.Value) -> ( Model model msg, Cmd (Msg msg) ) -> ( Model model msg, Cmd (Msg msg) )
-saveSession outPort encodeMsg ( model, cmd ) =
+saveSession output encodeMsg ( model, cmd ) =
     ( model
     , Cmd.batch
         [ cmd
-        , outPort (encodeSession encodeMsg model)
+        , output (encodeSession encodeMsg model)
         ]
     )
 
