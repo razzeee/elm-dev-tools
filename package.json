@@ -18,7 +18,7 @@
     "hot-reload",
     "time-travel"
   ],
-  "author": "asger nielsen <opvasger@gmail.com>",
+  "author": "",
   "license": "BSD-3-Clause",
   "bugs": {
     "url": "https://github.com/opvasger/elm-develop/issues"
