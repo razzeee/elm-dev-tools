@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Example App</title>
+    <script src="dist/index.js"></script>
+</head>
+
+<body>
+    <script>
+
+        var example = Elm.Main.init({
+            node: document.body,
+            flags: {
+                session: localStorage.getItem("elm-debug")
+            }
+        })
+
+        example.ports.outPort.subscribe(function (output) {
+
+            if (output.session) {
+
+                localStorage.setItem("elm-debug", output.session)
+            }
+        })
+
+    </script>
+</body>
+
+</html>
