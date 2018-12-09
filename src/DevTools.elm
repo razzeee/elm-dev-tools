@@ -183,7 +183,7 @@ toHtml { printModel, encodeMsg, view } model =
 
 toInit : InitConfig model msg -> ( Model model msg, Cmd (Msg msg) )
 toInit { update, msgDecoder, flags, modelCmdPair } =
-    case Jd.decodeValue (sessionDecoder msgDecoder (Tuple.first modelCmdPair) { width = 0, height = 0 }) flags of
+    case Jd.decodeValue (sessionDecoder msgDecoder (Tuple.first modelCmdPair) Size.init) flags of
         Ok ( session, msgZl ) ->
             let
                 ( index, msgs ) =
@@ -208,8 +208,8 @@ toInit { update, msgDecoder, flags, modelCmdPair } =
 
         Err importError ->
             ( { updates = Zl.singleton ( Nothing, Tuple.first modelCmdPair )
-              , position = { left = 10000, top = 10000 }
-              , viewportSize = { width = 0, height = 0 }
+              , position = P.init
+              , viewportSize = Size.init
               , layout = Collapsed
               , isModelOverlayed = False
               , isSubscribed = True

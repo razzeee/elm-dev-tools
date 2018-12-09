@@ -1,4 +1,4 @@
-module Position exposing (Position, add, clamp, fromSize, jsonDecoder, jsonEncode, mouseMoveDecoder, sub)
+module Position exposing (Position, add, clamp, fromSize, init, jsonDecoder, jsonEncode, mouseMoveDecoder, sub)
 
 import Json.Decode as Jd
 import Json.Encode as Je
@@ -9,6 +9,11 @@ type alias Position =
     { left : Int
     , top : Int
     }
+
+
+init : Position
+init =
+    Position 0 0
 
 
 add : Position -> Position -> Position

@@ -1,4 +1,4 @@
-module Size exposing (Size, fromViewport, jsonDecoder, jsonEncode, mapFromInts)
+module Size exposing (Size, fromViewport, init, jsonDecoder, jsonEncode, mapFromInts)
 
 import Browser.Dom exposing (Viewport)
 import Json.Decode as Jd
@@ -9,6 +9,11 @@ type alias Size =
     { width : Int
     , height : Int
     }
+
+
+init : Size
+init =
+    Size 0 0
 
 
 fromViewport : Viewport -> Size
