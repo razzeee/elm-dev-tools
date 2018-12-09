@@ -1,4 +1,4 @@
-module DevTools.Main exposing (Config, Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
+module DevTools exposing (Config, Program, doNothing, toDocument, toHtml, toInit, toMsg, toSubscriptions, toUpdate)
 
 import Browser
 import Browser.Dom as Bd
@@ -86,17 +86,16 @@ type Msg msg
 
 
 type alias InitConfig model msg =
-    { update : msg -> model -> ( model, Cmd msg )
-    , msgDecoder : Jd.Decoder msg
+    { modelCmdPair : ( model, Cmd msg )
     , flags : Jd.Value
-    , model : model
-    , cmd : Cmd msg
+    , msgDecoder : Jd.Decoder msg
+    , update : msg -> model -> ( model, Cmd msg )
     }
 
 
 type alias ViewConfig model msg view =
-    { printModel : model -> String
-    , encodeMsg : msg -> Je.Value
+    { encodeMsg : msg -> Je.Value
+    , printModel : model -> String
     , view : model -> view
     }
 
@@ -183,8 +182,8 @@ toHtml { printModel, encodeMsg, view } model =
 
 
 toInit : InitConfig model msg -> ( Model model msg, Cmd (Msg msg) )
-toInit { update, msgDecoder, flags, model, cmd } =
-    case Jd.decodeValue (sessionDecoder msgDecoder model { width = 0, height = 0 }) flags of
+toInit { update, msgDecoder, flags, modelCmdPair } =
+    case Jd.decodeValue (sessionDecoder msgDecoder (Tuple.first modelCmdPair) { width = 0, height = 0 }) flags of
         Ok ( session, msgZl ) ->
             let
                 ( index, msgs ) =
@@ -202,13 +201,13 @@ toInit { update, msgDecoder, flags, model, cmd } =
                 session.isSubscribed
                 ( session
                 , Cmd.batch
-                    [ Cmd.map UpdateWith cmd
+                    [ Cmd.map UpdateWith (Tuple.second modelCmdPair)
                     , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
                     ]
                 )
 
         Err importError ->
-            ( { updates = Zl.singleton ( Nothing, model )
+            ( { updates = Zl.singleton ( Nothing, Tuple.first modelCmdPair )
               , position = { left = 10000, top = 10000 }
               , viewportSize = { width = 0, height = 0 }
               , layout = Collapsed
@@ -222,7 +221,7 @@ toInit { update, msgDecoder, flags, model, cmd } =
               , sessionTitle = ""
               }
             , Cmd.batch
-                [ Cmd.map UpdateWith cmd
+                [ Cmd.map UpdateWith (Tuple.second modelCmdPair)
                 , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
                 ]
             )
