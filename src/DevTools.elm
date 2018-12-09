@@ -816,10 +816,10 @@ viewSubscribeButton currentHover isSubscribed =
     let
         title =
             if isSubscribed then
-                "Disable subscriptions"
+                "Unsubscribe"
 
             else
-                "Enable subscriptions"
+                "Subscribe"
 
         fill =
             if not isSubscribed then
