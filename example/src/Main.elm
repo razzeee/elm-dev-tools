@@ -13,6 +13,10 @@ import Time
 port output : Je.Value -> Cmd msg
 
 
+type alias Model =
+    { page : Page }
+
+
 type Msg
     = NameInput String
     | PassInput String
@@ -138,19 +142,31 @@ encodeMsg msg =
             Je.object [ ( "LogOut", Je.null ) ]
 
 
-devTools =
-    { printModel = Debug.toString
-    , output = output
-    , msgDecoder = msgDecoder
-    , encodeMsg = encodeMsg
-    }
-
-
+{--}
 main =
     DevTools.Browser.document
         { init = init
         , update = update
         , view = view
         , subscriptions = subscriptions
-        , devTools = devTools
+        , devTools =
+            { printModel = Debug.toString
+            , output = output
+            , msgDecoder = msgDecoder
+            , encodeMsg = encodeMsg
+            }
         }
+--}
+
+
+
+{--
+main : Program () Model Msg
+main =
+    Browser.document
+        { init = init
+        , update = update
+        , view = view
+        , subscriptions = subscriptions
+        }
+--}
