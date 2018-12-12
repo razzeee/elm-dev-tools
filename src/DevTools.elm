@@ -160,8 +160,8 @@ toDocument { printModel, encodeMsg, view } model =
             selectable
             (not model.isDragging)
             [ toCursorStyle model.isDragging model.hoveredElement ]
-            (Hl.lazy3 viewDevTools encodeMsg printModel model
-                :: Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+            (Hl.lazy2 viewDevTools encodeMsg model
+                :: Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (formatPrintedModel (printModel (Tuple.second model.updates.current))))
                 :: List.map (H.map UpdateWith) body
             )
         ]
@@ -175,8 +175,8 @@ toHtml { printModel, encodeMsg, view } model =
         (not model.isDragging)
         [ toCursorStyle model.isDragging model.hoveredElement
         ]
-        [ Hl.lazy3 viewDevTools encodeMsg printModel model
-        , Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (printModel (Tuple.second model.updates.current)))
+        [ Hl.lazy2 viewDevTools encodeMsg model
+        , Hl.lazy2 viewIf model.isModelOverlayed (Hl.lazy2 viewOverlay model.viewportSize (formatPrintedModel (printModel (Tuple.second model.updates.current))))
         , H.map UpdateWith (Hl.lazy view (Tuple.second model.updates.current))
         ]
 
@@ -201,8 +201,12 @@ toInit { update, msgDecoder, flags, modelCmdPair } =
                 session.isSubscribed
                 ( session
                 , Cmd.batch
-                    [ Cmd.map UpdateWith (Tuple.second modelCmdPair)
-                    , Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
+                    [ Task.perform ResizeViewport (Task.map Size.fromViewport Bd.getViewport)
+                    , if index == 0 then
+                        Cmd.map UpdateWith (Tuple.second modelCmdPair)
+
+                      else
+                        Cmd.none
                     ]
                 )
 
@@ -400,8 +404,8 @@ toUpdate { msgDecoder, encodeMsg, update, output } msg model =
                     ( { model | importError = Just err }, Cmd.none )
 
 
-viewDevTools : (msg -> Je.Value) -> (model -> String) -> Model model msg -> Html (Msg msg)
-viewDevTools encodeMsg printModel model =
+viewDevTools : (msg -> Je.Value) -> Model model msg -> Html (Msg msg)
+viewDevTools encodeMsg model =
     let
         isExpanded =
             model.layout == Expanded
@@ -497,6 +501,12 @@ updateWith update msgs index isSubscribed ( model, cmd ) =
               }
             , cmd
             )
+
+
+formatPrintedModel : String -> String
+formatPrintedModel =
+    -- TODO
+    identity
 
 
 withDefaultSessionTitle : String -> String
@@ -1075,8 +1085,8 @@ viewSlider length currentIndex =
         []
 
 
-viewKeyedUpdate : Hoverable -> Int -> ( Int, String ) -> ( String, Html (Msg msg) )
-viewKeyedUpdate currentHover currentIndex ( index, json ) =
+viewUpdate : Hoverable -> Int -> ( Int, String ) -> ( String, Html (Msg msg) )
+viewUpdate currentHover currentIndex ( index, json ) =
     let
         ( text, sub, title ) =
             case Jd.decodeString (Jd.keyValuePairs Jd.value) json of
@@ -1109,7 +1119,7 @@ viewKeyedUpdate currentHover currentIndex ( index, json ) =
             else
                 "white"
     in
-    ( String.fromInt currentIndex
+    ( String.fromInt index
     , selectable False
         [ Ha.style "height" "18px"
         , Ha.style "padding" "0 5px"
@@ -1184,7 +1194,7 @@ viewPage { currentIndex, currentHover, isSubscribed, layoutSize, page, updates, 
         body =
             case page of
                 Updates ->
-                    Hk.node "div" [] (List.map (viewKeyedUpdate currentHover currentIndex) updates)
+                    Hk.node "div" [] (List.map (viewUpdate currentHover currentIndex) updates)
 
                 Notes ->
                     viewNotes sessionTitle notes

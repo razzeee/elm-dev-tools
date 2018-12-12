@@ -1,145 +1,76 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Dom as Bd
+import Browser.Events as Be
 import DevTools.Browser
 import Html as H exposing (Html)
 import Html.Attributes as Ha
 import Html.Events as He
 import Json.Decode as Jd
 import Json.Encode as Je
+import Task
 import Time
 
 
 port output : Je.Value -> Cmd msg
 
 
-type alias Model =
-    { page : Page }
-
-
-type Msg
-    = NameInput String
-    | PassInput String
-    | CountInput Int
-    | LogIn
-    | LogOut
-
-
-type Page
-    = Authentication { name : String, pass : String }
-    | Counter { name : String, count : Int }
-
-
-init _ =
-    ( { page = Authentication { name = "", pass = "" }
-      }
-    , Cmd.none
-    )
-
-
-update msg model =
-    case ( msg, model.page ) of
-        ( NameInput name, Authentication state ) ->
-            ( { model | page = Authentication { state | name = name } }, Cmd.none )
-
-        ( PassInput pass, Authentication state ) ->
-            ( { model | page = Authentication { state | pass = pass } }, Cmd.none )
-
-        ( CountInput count, Counter state ) ->
-            ( { model | page = Counter { state | count = count } }, Cmd.none )
-
-        ( LogIn, Authentication state ) ->
-            ( { model | page = Counter { name = state.name, count = 0 } }, Cmd.none )
-
-        ( LogOut, Counter state ) ->
-            ( { model | page = Authentication { name = "", pass = "" } }, Cmd.none )
-
-        _ ->
-            ( model, Cmd.none )
-
-
-subscriptions model =
-    case model.page of
-        Counter state ->
-            Time.every 500 (always (CountInput (state.count + 1)))
-
-        _ ->
-            Sub.none
-
-
-view model =
-    { title = "Example"
-    , body =
-        H.div
-            [ Ha.style "display" "flex"
-            , Ha.style "flex-direction" "column"
-            , Ha.style "justify-content" "center"
-            , Ha.style "align-items" "center"
-            , Ha.style "height" "95vh"
-            , Ha.style "width" "95vw"
-            , Ha.style "overflow" "hidden"
-            ]
-            (case model.page of
-                Counter state ->
-                    [ H.div [] [ H.text ("Hello " ++ state.name) ]
-                    , H.button [ He.onClick LogOut ] [ H.text "Log Out" ]
-                    , H.div []
-                        [ H.button [ He.onClick (CountInput (state.count + 1)) ] [ H.text "+" ]
-                        , H.div [] [ H.text (String.fromInt state.count) ]
-                        , H.button [ He.onClick (CountInput (state.count - 1)) ] [ H.text "-" ]
-                        ]
-                    ]
-
-                Authentication state ->
-                    [ H.input
-                        [ Ha.type_ "text"
-                        , Ha.value state.name
-                        , He.onInput NameInput
-                        ]
-                        []
-                    , H.input
-                        [ Ha.type_ "password"
-                        , Ha.value state.pass
-                        , He.onInput PassInput
-                        ]
-                        []
-                    , H.button
-                        [ Ha.disabled (String.length state.pass < 1 || String.length state.name < 1)
-                        , He.onClick LogIn
-                        ]
-                        [ H.text "Log In" ]
-                    ]
-            )
-            :: []
+type alias Velocity =
+    { vertical : Float
+    , horizontal : Float
     }
 
 
-msgDecoder =
-    Jd.oneOf
-        [ Jd.field "NameInput" (Jd.map NameInput Jd.string)
-        , Jd.field "PassInput" (Jd.map PassInput Jd.string)
-        , Jd.field "CountInput" (Jd.map CountInput Jd.int)
-        , Jd.field "LogIn" (Jd.null LogIn)
-        , Jd.field "LogOut" (Jd.null LogOut)
-        ]
+type alias Size =
+    { width : Int
+    , height : Int
+    }
 
 
-encodeMsg msg =
-    case msg of
-        NameInput text ->
-            Je.object [ ( "NameInput", Je.string text ) ]
+type alias Position =
+    { left : Float
+    , top : Float
+    }
 
-        PassInput text ->
-            Je.object [ ( "PassInput", Je.string text ) ]
 
-        CountInput count ->
-            Je.object [ ( "CountInput", Je.int count ) ]
+type Direction
+    = Vertical VerticalDirection
+    | Horizontal HorizontalDirection
 
-        LogIn ->
-            Je.object [ ( "LogIn", Je.null ) ]
 
-        LogOut ->
-            Je.object [ ( "LogOut", Je.null ) ]
+type HorizontalDirection
+    = Left
+    | Right
+
+
+type VerticalDirection
+    = Up
+    | Down
+
+
+type alias Controls =
+    { up : Bool
+    , down : Bool
+    , left : Bool
+    , right : Bool
+    }
+
+
+type Msg
+    = NextFrame Float
+    | WindowResize Int Int
+    | Press Direction
+    | Release Direction
+
+
+type alias Model =
+    { face : HorizontalDirection
+    , position : Position
+    , velocity : Velocity
+    , size : Size
+    , controls : Controls
+    }
 
 
 {--}
@@ -170,3 +101,293 @@ main =
         , subscriptions = subscriptions
         }
 --}
+
+
+init : flags -> ( Model, Cmd Msg )
+init _ =
+    ( { face = Right
+      , position = Position 0 0
+      , velocity = Velocity 0 0
+      , size = Size 0 0
+      , controls = Controls False False False False
+      }
+    , Task.perform fromViewport Bd.getViewport
+    )
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        NextFrame latency ->
+            let
+                adjustedLatency =
+                    latency / 10
+            in
+            ( model
+                |> gravity adjustedLatency
+                |> jump
+                |> walk
+                |> physics adjustedLatency
+            , Cmd.none
+            )
+
+        WindowResize width height ->
+            ( physics 1
+                { model
+                    | size = Size width height
+                }
+            , Cmd.none
+            )
+
+        Press dir ->
+            ( { model
+                | controls = updateControls True dir model.controls
+              }
+            , Cmd.none
+            )
+
+        Release dir ->
+            ( { model
+                | controls = updateControls False dir model.controls
+              }
+            , Cmd.none
+            )
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ Be.onAnimationFrameDelta NextFrame
+        , Be.onResize WindowResize
+        , Be.onKeyDown (Jd.map Press (Jd.andThen toDirectionDecoder (Jd.field "key" Jd.string)))
+        , Be.onKeyUp (Jd.map Release (Jd.andThen toDirectionDecoder (Jd.field "key" Jd.string)))
+        ]
+
+
+view : Model -> Browser.Document Msg
+view model =
+    { title = "Example"
+    , body =
+        [ viewMario model
+        ]
+    }
+
+
+viewMario : Model -> Html Msg
+viewMario { face, position, velocity, size } =
+    H.img
+        [ Ha.style "position" "absolute"
+        , Ha.style "left" (toPx position.left)
+        , Ha.style "top" (toPx (toFloat size.height - 35 - position.top))
+        , Ha.src (toImageSrc size position velocity face)
+        ]
+        []
+
+
+toImageSrc : Size -> Position -> Velocity -> HorizontalDirection -> String
+toImageSrc size position velocity face =
+    "mario/"
+        ++ toPoseString size position velocity
+        ++ "-"
+        ++ directionToString (Horizontal face)
+        ++ ".gif"
+
+
+gravity : Float -> Model -> Model
+gravity adjustedLatency ({ velocity, size } as model) =
+    { model
+        | velocity =
+            { velocity
+                | vertical =
+                    if model.position.top > 0 then
+                        velocity.vertical - adjustedLatency / 4
+
+                    else
+                        0
+            }
+    }
+
+
+jump : Model -> Model
+jump ({ velocity, controls } as model) =
+    if controls.up && velocity.vertical == 0 then
+        { model | velocity = { velocity | vertical = 8 } }
+
+    else
+        model
+
+
+walk : Model -> Model
+walk ({ velocity, controls, face } as model) =
+    { model
+        | face = updateFace controls face
+        , velocity = updateHorizontalVelocity controls velocity
+    }
+
+
+physics : Float -> Model -> Model
+physics adjustedLatency ({ position, velocity, size } as model) =
+    { model
+        | position =
+            { position
+                | left = clamp 0 (toFloat size.width - 35) (position.left + adjustedLatency * velocity.horizontal)
+                , top = clamp 0 (toFloat size.height - 35) (position.top + adjustedLatency * velocity.vertical)
+            }
+    }
+
+
+updateFace : Controls -> HorizontalDirection -> HorizontalDirection
+updateFace { left, right } face =
+    if left then
+        Left
+
+    else if right then
+        Right
+
+    else
+        face
+
+
+updateHorizontalVelocity : Controls -> Velocity -> Velocity
+updateHorizontalVelocity { left, right } velocity =
+    { velocity
+        | horizontal =
+            if left then
+                -1
+
+            else if right then
+                1
+
+            else
+                0
+    }
+
+
+updateControls : Bool -> Direction -> Controls -> Controls
+updateControls isPressed direction controls =
+    case direction of
+        Vertical Up ->
+            { controls | up = isPressed }
+
+        Vertical Down ->
+            { controls | down = isPressed }
+
+        Horizontal Left ->
+            { controls | left = isPressed }
+
+        Horizontal Right ->
+            { controls | right = isPressed }
+
+
+stringAndThenDecoder : Jd.Decoder value -> Jd.Decoder value
+stringAndThenDecoder valueDecoder =
+    Jd.andThen
+        (\str ->
+            case Jd.decodeString valueDecoder str of
+                Ok value ->
+                    Jd.succeed value
+
+                Err error ->
+                    Jd.fail (Jd.errorToString error)
+        )
+        Jd.string
+
+
+toDirectionDecoder : String -> Jd.Decoder Direction
+toDirectionDecoder text =
+    case text of
+        "ArrowUp" ->
+            Jd.succeed (Vertical Up)
+
+        "ArrowDown" ->
+            Jd.succeed (Vertical Down)
+
+        "ArrowLeft" ->
+            Jd.succeed (Horizontal Left)
+
+        "ArrowRight" ->
+            Jd.succeed (Horizontal Right)
+
+        _ ->
+            Jd.fail ("not a direction: " ++ text)
+
+
+directionToString : Direction -> String
+directionToString dir =
+    case dir of
+        Vertical Up ->
+            "ArrowUp"
+
+        Vertical Down ->
+            "ArrowDown"
+
+        Horizontal Left ->
+            "ArrowLeft"
+
+        Horizontal Right ->
+            "ArrowRight"
+
+
+toPoseString : Size -> Position -> Velocity -> String
+toPoseString size { top } { horizontal } =
+    if top > 0 then
+        "jump"
+
+    else if horizontal /= 0 then
+        "walk"
+
+    else
+        "stand"
+
+
+toPx : Float -> String
+toPx n =
+    String.fromFloat n ++ "px"
+
+
+fromViewport : Bd.Viewport -> Msg
+fromViewport { scene } =
+    WindowResize (round scene.width) (round scene.height)
+
+
+msgDecoder : Jd.Decoder Msg
+msgDecoder =
+    Jd.oneOf
+        [ Jd.map NextFrame (Jd.field "Frame" Jd.float)
+        , Jd.map2 WindowResize
+            (Jd.at [ "Resize", "width" ] Jd.int)
+            (Jd.at [ "Resize", "height" ] Jd.int)
+        , Jd.map Press (Jd.field "Press" (Jd.andThen toDirectionDecoder Jd.string))
+        , Jd.map Release (Jd.field "Release" (Jd.andThen toDirectionDecoder Jd.string))
+        ]
+
+
+encodeMsg : Msg -> Je.Value
+encodeMsg msg =
+    case msg of
+        NextFrame latency ->
+            Je.object [ ( "Frame", Je.float latency ) ]
+
+        WindowResize width height ->
+            Je.object
+                [ ( "Resize"
+                  , Je.object
+                        [ ( "width", Je.int width )
+                        , ( "height", Je.int height )
+                        ]
+                  )
+                ]
+
+        Press direction ->
+            Je.object
+                [ ( "Press"
+                  , Je.string (directionToString direction)
+                  )
+                ]
+
+        Release direction ->
+            Je.object
+                [ ( "Release"
+                  , Je.string (directionToString direction)
+                  )
+                ]
