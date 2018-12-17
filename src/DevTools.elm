@@ -1060,7 +1060,6 @@ viewOverlay viewportSize text =
         , Ha.style "z-index" "2147483646"
         , Ha.style "background-color" "rgba(255,255,255,.95)"
         , Ha.style "height" (toPx viewportSize.height)
-        , Ha.style "width" (toPx viewportSize.width)
         ]
         [ H.div [] [ H.text text ]
         ]
