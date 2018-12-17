@@ -10,8 +10,7 @@ If you want to try it, you can clone the repo and run this `bash`-script from th
 ```bash
 npm install
 
-chmod +x ./dev.sh
+npm run watch
 
-./dev.sh
 ```
 

@@ -2,8 +2,12 @@
   "name": "example",
   "version": "0.1.0",
   "devDependencies": {
+    "concurrently": "^4.1.0",
+    "elm": "0.19.0-bugfix2",
     "live-server": "1.2.1",
-    "nodemon": "1.18.7",
-    "elm": "0.19.0-bugfix2"
+    "nodemon": "1.18.7"
+  },
+  "scripts": {
+    "watch": "concurrently \"nodemon --watch ../src --watch src --ext elm --exec \\\"elm make src/Main.elm --output=dist/index.js\\\"\" \"live-server --watch=./dist\""
   }
 }
